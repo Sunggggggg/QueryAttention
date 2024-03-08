@@ -11,49 +11,10 @@ from dataset.realestate10k_dataio import RealEstate10k
 import torch
 import models
 import training
-import configargparse
 from torch.utils.data import DataLoader
 import loss_functions
 import summaries
 import config
-
-
-p = configargparse.ArgumentParser()
-p.add('-c', '--config_filepath', required=False, is_config_file=True)
-
-p.add_argument('--logging_root', type=str, default=config.logging_root)
-p.add_argument('--data_root', type=str, default='/om2/user/egger/MultiClassSRN/data/NMR_Dataset', required=False)
-p.add_argument('--val_root', type=str, default=None, required=False)
-p.add_argument('--network', type=str, default='relu')
-p.add_argument('--category', type=str, default='donut')
-p.add_argument('--conditioning', type=str, default='hyper')
-p.add_argument('--experiment_name', type=str, required=True)
-p.add_argument('--num_context', type=int, default=0)
-p.add_argument('--batch_size', type=int, default=12)
-p.add_argument('--num_trgt', type=int, default=1)
-p.add_argument('--views', type=int, default=2)
-p.add_argument('--gpus', type=int, default=1)
-
-# General training options
-p.add_argument('--lr', type=float, default=5e-5)
-p.add_argument('--l2_coeff', type=float, default=0.05)
-p.add_argument('--num_epochs', type=int, default=40001)
-p.add_argument('--lpips', action='store_true', default=False)
-p.add_argument('--depth', action='store_true', default=False)
-p.add_argument('--model', type=str, default='midas_vit')
-p.add_argument('--epochs_til_ckpt', type=int, default=10)
-p.add_argument('--steps_til_summary', type=int, default=500)
-p.add_argument('--iters_til_ckpt', type=int, default=10000)
-p.add_argument('--checkpoint_path', default=None)
-
-# Ablations
-p.add_argument('--no_multiview', action='store_true', default=False)
-p.add_argument('--no_sample', action='store_true', default=False)
-p.add_argument('--no_latent_concat', action='store_true', default=False)
-p.add_argument('--no_data_aug', action='store_true', default=False)
-p.add_argument('--no_high_freq', action='store_true', default=False)
-
-opt = p.parse_args()
 
 
 def sync_model(model):
@@ -72,17 +33,17 @@ def multigpu_train(gpu, opt):
     torch.cuda.set_device(gpu)
 
     def create_dataloader_callback(sidelength, batch_size, query_sparsity):
-        train_dataset = RealEstate10k(img_root="data_download/realestate/train",
-                                     pose_root="poses/realestate/train.mat",
+        train_dataset = RealEstate10k(img_root="/home/dev4/data/SKY/datasets/data_download/realestate/train",
+                                     pose_root="/home/dev4/data/SKY/datasets/poses/realestate/train.mat",
                                      num_ctxt_views=opt.views, num_query_views=1, query_sparsity=192,
                                      lpips=opt.lpips, augment=(not opt.no_data_aug))
         train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True,
-                                  drop_last=True, num_workers=8, pin_memory=False, worker_init_fn=worker_init_fn)
+                                  drop_last=True, num_workers=4, pin_memory=False, worker_init_fn=worker_init_fn)
 
-        val_dataset = RealEstate10k(img_root="data_download/realestate/test",
-                                      pose_root="poses/realestate/test.mat",
+        val_dataset = RealEstate10k(img_root="/home/dev4/data/SKY/datasets/data_download/realestate/test",
+                                      pose_root="/home/dev4/data/SKY/datasets/poses/realestate/test.mat",
                                       num_ctxt_views=opt.views, num_query_views=1, augment=False)
-        val_loader = DataLoader(val_dataset, batch_size=8, shuffle=True, drop_last=True, num_workers=4, pin_memory=False, worker_init_fn=worker_init_fn)
+        val_loader = DataLoader(val_dataset, batch_size=4, shuffle=True, drop_last=True, num_workers=4, pin_memory=False, worker_init_fn=worker_init_fn)
 
         return train_loader, val_loader
 
@@ -113,7 +74,7 @@ def multigpu_train(gpu, opt):
     summary_fn = summaries.img_summaries
     val_summary_fn = summaries.img_summaries
     root_path = os.path.join(opt.logging_root, opt.experiment_name)
-    loss_fn = val_loss_fn = loss_functions.LFLoss(opt.l2_coeff, opt.lpips, opt.depth)
+    loss_fn = val_loss_fn = loss_functions.LFLoss(opt.l2_coeff, opt.lpips, opt.depth, opt.contra)
 
     training.training(model=model, dataloader_callback=create_dataloader_callback,
                                  dataloader_iters=(1000000,), dataloader_params=((64, opt.batch_size, 512), ),
@@ -124,10 +85,10 @@ def multigpu_train(gpu, opt):
                                  overwrite=True,
                                  optimizer=optimizer,
                                  clip_grad=True,
-                                 rank=gpu, train_function=training.train, gpus=opt.gpus, n_view=opt.views)
+                                 rank=gpu, train_function=training.train, gpus=opt.gpus, n_view=opt.views, model_name=opt.model)
 
 if __name__ == "__main__":
-    opt = p.parse_args()
+    opt = config.config_parser()
     if opt.gpus > 1:
         mp.spawn(multigpu_train, nprocs=opt.gpus, args=(opt,))
     else:

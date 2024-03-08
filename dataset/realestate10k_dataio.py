@@ -4,9 +4,9 @@ import os.path as osp
 import torch
 import numpy as np
 from glob import glob
+import sys
 
 current_dir = osp.dirname(os.path.abspath(__file__))
-import sys
 sys.path.append(current_dir + '/../')
 
 from utils import data_util, util
@@ -20,8 +20,9 @@ import cv2
 from tqdm import tqdm
 from scipy.io import loadmat
 
-
 def augment(rgb, intrinsics, c2w_mat):
+    """
+    """
 
     # Vertical Flip with 50% probability
     # if np.random.uniform(0, 1) < 0.2:
@@ -30,12 +31,14 @@ def augment(rgb, intrinsics, c2w_mat):
     #     c2w_mat = c2w_mat @ tf_flip
 
     # Horizontal Flip with 50% Probability
+    # Filp along x axis
     if np.random.uniform(0, 1) < 0.5:
         rgb = rgb[:, ::-1, :]
         tf_flip = np.array([[-1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]])
         c2w_mat = c2w_mat @ tf_flip
 
     # Crop by aspect ratio
+    # rgm : [H, W ,3]
     if np.random.uniform(0, 1) < 0.5:
         py = np.random.randint(1, 32)
         rgb = rgb[py:-py, :, :]
@@ -59,6 +62,8 @@ def augment(rgb, intrinsics, c2w_mat):
     return rgb, intrinsics, c2w_mat
 
 class Camera(object):
+    """ For RealExtate dataset format
+    """
     def __init__(self, entry):
         fx, fy, cx, cy = entry[1:5]
         self.intrinsics = np.array([[fx, 0, cx, 0],
@@ -71,27 +76,10 @@ class Camera(object):
         self.w2c_mat = w2c_mat_4x4
         self.c2w_mat = np.linalg.inv(w2c_mat_4x4)
 
-
-def unnormalize_intrinsics(intrinsics, h, w):
-    intrinsics = intrinsics.copy()
-    intrinsics[0] *= w
-    intrinsics[1] *= h
-    return intrinsics
-
-
-def parse_pose_file(file):
-    f = open(file, 'r')
-    cam_params = {}
-    for i, line in enumerate(f):
-        if i == 0:
-            continue
-        entry = [float(x) for x in line.split()]
-        id = int(entry[0])
-        cam_params[id] = Camera(entry)
-    return cam_params
-
-
 def parse_pose(pose, timestep):
+    """ 
+    pose : [N, ]
+    """
     timesteps = pose[:, :1]
     timesteps = np.around(timesteps)
     mask = (timesteps == timestep)[:, 0]
@@ -100,92 +88,11 @@ def parse_pose(pose, timestep):
 
     return camera
 
-
-def get_camera_pose(scene_path, all_pose_dir, uv, views=1):
-    npz_files = sorted(scene_path.glob("*.npz"))
-    npz_file = npz_files[0]
-    data = np.load(npz_file)
-    all_pose_dir = Path(all_pose_dir)
-
-    rgb_files = list(data.keys())
-
-    timestamps = [int(rgb_file.split('.')[0]) for rgb_file in rgb_files]
-    sorted_ids = np.argsort(timestamps)
-
-    rgb_files = np.array(rgb_files)[sorted_ids]
-    timestamps = np.array(timestamps)[sorted_ids]
-
-    camera_file = all_pose_dir / (str(scene_path.name) + '.txt')
-    cam_params = parse_pose_file(camera_file)
-    # H, W, _ = data[rgb_files[0]].shape
-
-    # Weird cropping of images
-    H, W = 256, 456
-
-    xscale = W / min(H, W)
-    yscale = H / min(H, W)
-
-
-    query = {}
-    context = {}
-
-    render_frame = min(128, rgb_files.shape[0])
-
-    query_intrinsics = []
-    query_c2w = []
-    query_rgbs = []
-    for i in range(1, render_frame):
-        rgb = data[rgb_files[i]]
-        timestep = timestamps[i]
-
-        # rgb = cv2.resize(rgb, (W, H))
-        intrinsics = unnormalize_intrinsics(cam_params[timestep].intrinsics, H, W)
-
-        intrinsics[0, 2] = intrinsics[0, 2] / xscale
-        intrinsics[1, 2] = intrinsics[1, 2] / yscale
-        rgb = rgb.astype(np.float32) / 127.5 - 1
-
-        query_intrinsics.append(intrinsics)
-        query_c2w.append(cam_params[timestep].c2w_mat)
-        query_rgbs.append(rgb)
-
-    context_intrinsics = []
-    context_c2w = []
-    context_rgbs = []
-
-    if views == 1:
-        render_ids = [0]
-    elif views == 2:
-        render_ids = [0, min(len(rgb_files) - 1, 128)]
-    elif views == 3:
-        render_ids = [0, min(len(rgb_files) - 1, 128) // 2, min(len(rgb_files) - 1, 128)]
-    else:
-        assert False
-
-    for i in render_ids:
-        rgb = data[rgb_files[i]]
-        timestep = timestamps[i]
-        # print("render: ", i)
-        # rgb = cv2.resize(rgb, (W, H))
-        intrinsics = unnormalize_intrinsics(cam_params[timestep].intrinsics, H, W)
-        intrinsics[0, 2] = intrinsics[0, 2] / xscale
-        intrinsics[1, 2] = intrinsics[1, 2] / yscale
-
-        rgb = rgb.astype(np.float32) / 127.5 - 1
-
-        context_intrinsics.append(intrinsics)
-        context_c2w.append(cam_params[timestep].c2w_mat)
-        context_rgbs.append(rgb)
-
-    query = {'rgb': torch.Tensor(query_rgbs)[None].float(),
-             'cam2world': torch.Tensor(query_c2w)[None].float(),
-             'intrinsics': torch.Tensor(query_intrinsics)[None].float(),
-             'uv': uv.view(-1, 2)[None, None].expand(1, render_frame - 1, -1, -1)}
-    ctxt = {'rgb': torch.Tensor(context_rgbs)[None].float(),
-            'cam2world': torch.Tensor(context_c2w)[None].float(),
-            'intrinsics': torch.Tensor(context_intrinsics)[None].float()}
-
-    return {'query': query, 'context': ctxt}
+def unnormalize_intrinsics(intrinsics, h, w):
+    intrinsics = intrinsics.copy()
+    intrinsics[0] *= w
+    intrinsics[1] *= h
+    return intrinsics
 
 class RealEstate10k():
     def __init__(self, img_root, pose_root,
@@ -196,8 +103,8 @@ class RealEstate10k():
         self.num_query_views = num_query_views
         self.query_sparsity = query_sparsity
 
+        # Load dataset (img, pose)
         all_im_dir = Path(img_root)
-        # self.all_pose_dir = Path(pose_root)
         self.all_pose = loadmat(pose_root)
         self.lpips = lpips
         self.eval = eval
@@ -208,11 +115,11 @@ class RealEstate10k():
         if max_num_scenes:
             self.all_scenes = list(self.all_scenes)[:max_num_scenes]
 
+        # For show
         data = np.load(dummy_img_path)
         key = list(data.keys())[0]
         im = data[key]
 
-        print(im.shape)
         H, W = im.shape[:2]
         H, W = 256, 455
         self.H, self.W = H, W
@@ -229,6 +136,8 @@ class RealEstate10k():
         self.yscale = yscale
 
         # For now the images are already square cropped
+        # Original image size : self.H, self.W
+        # Square crop : dim
         self.H = 256
         self.W = 455
 
@@ -239,31 +148,42 @@ class RealEstate10k():
         else:
             i, j = torch.meshgrid(torch.arange(0, W), torch.arange(0, H))
 
-        self.uv = torch.stack([i.float(), j.float()], dim=-1).permute(1, 0, 2)
+        self.uv = torch.stack([i.float(), j.float()], dim=-1).permute(1, 0, 2)  # [W, H, 2] -> [H, W, 2]
 
-        self.uv = self.uv[None].permute(0, -1, 1, 2).permute(0, 2, 3, 1)
-        self.uv = self.uv.reshape(-1, 2)
+        self.uv = self.uv[None].permute(0, -1, 1, 2).permute(0, 2, 3, 1)        # [1, H, W, 2] [1, 2, H, W] [1, H, W, 2]
+        self.uv = self.uv.reshape(-1, 2)                # [H, W, 2]
 
         self.scene_path_list = list(Path(img_root).glob("*/"))
 
-
     def __len__(self):
         return len(self.all_scenes)
-
+        
     def __getitem__(self, idx):
+        """
+        Return : dict
+        {'query': query, 'context': ctxt}, query
+        query
+            'rgb'           : [B, num_query_views, 1024, 3]
+            'cam2world'     : [B, num_query_views, 4, 4]
+            'intrinsics'    : [B, num_query_views, 4, 4]
+            'uv'            : [B, num_query_views, 1024, xy]
+        context
+            'rgb'           : [B, num_ctxt_views, H, W, 3]
+            'cam2world'     : [B, num_ctxt_views, 4, 4]
+            'intrinsics'    : [B, num_ctxt_views, 4, 4]
+        """
         scene_path = self.all_scenes[idx]
         npz_files = sorted(scene_path.glob("*.npz"))
 
-        name = scene_path.name
-
+        name = scene_path.name          # 
+        # if dont find scene, random select scene
         if name not in self.all_pose:
             return self.__getitem__(random.randint(0, len(self.all_scenes) - 1))
 
-        pose = self.all_pose[name]
-
         if len(npz_files) == 0:
             return self.__getitem__(random.randint(0, len(self.all_scenes) - 1))
-
+        
+        pose = self.all_pose[name]
         npz_file = npz_files[0]
         try:
             data = np.load(npz_file)
@@ -285,15 +205,9 @@ class RealEstate10k():
 
         assert (timestamps == sorted(timestamps)).all()
         num_frames = len(rgb_files)
-        # window_size = 32
-        shift = np.random.randint(low=-1, high=2)
-
         left_bound = 0
         right_bound = num_frames - 1
         candidate_ids = np.arange(left_bound, right_bound)
-
-
-        # remove windows between frame -32 to 32
         nframe = 1
         nframe_view = 92
 
@@ -302,18 +216,21 @@ class RealEstate10k():
 
         id_feats = []
 
+        # Select num_ctxt_views frame, (current frame nframe_view = 92)
         for i in range(self.num_ctxt_views):
             if len(candidate_ids) == 0:
                 return self.__getitem__(random.randint(0, len(self.all_scenes) - 1))
 
-            id_feat = np.random.choice(candidate_ids, size=1,
-                                       replace=False)
+            id_feat = np.random.choice(candidate_ids, size=1, replace=False)
             candidate_ids = candidate_ids[(candidate_ids < (id_feat - nframe_view)) | (candidate_ids > (id_feat + nframe_view))]
 
             id_feats.append(id_feat.item())
 
         id_feat = np.array(id_feats)
 
+        # num_query_views   : view sampling btw [nframe_view, [low, high]]
+        # id_render         : Query view
+        # id_feat           : Context view
         if self.num_ctxt_views == 2:
             low = np.min(id_feat) - 64
             high = np.max(id_feat) + 64
@@ -345,6 +262,7 @@ class RealEstate10k():
         else:
             assert False
 
+        # make query GTs
         query_rgbs = []
         query_intrinsics = []
         query_c2w = []
@@ -361,7 +279,6 @@ class RealEstate10k():
                 rgb = data_util.square_crop_img(rgb)
 
             cam_param = parse_pose(pose, timestamps[id])
-
             intrinsics = unnormalize_intrinsics(cam_param.intrinsics, self.H, self.W)
 
             if self.square_crop:
@@ -371,9 +288,8 @@ class RealEstate10k():
             if self.augment:
                 rgb, intrinsics, cam_param.c2w_mat = augment(rgb, intrinsics, cam_param.c2w_mat)
 
-            rgb = rgb.astype(np.float32) / 127.5 - 1
-            img_size = rgb.shape[:2]
-            rgb = rgb.reshape((-1, 3))
+            rgb = rgb.astype(np.float32) / 127.5 - 1    # Normalized
+            rgb = rgb.reshape((-1, 3))      # [HW, 3]
 
             mask_lpips = 0.0
 
@@ -389,8 +305,8 @@ class RealEstate10k():
 
                         uv_select = uv[y_offset:y_offset+offset, x_offset:x_offset+offset]
                         rgb_select = rgb[y_offset:y_offset+offset, x_offset:x_offset+offset]
-                        uv = uv_select.reshape((-1, 2))
-                        rgb = rgb_select.reshape((-1, 3))
+                        uv = uv_select.reshape((-1, 2))     # [hw, 2]
+                        rgb = rgb_select.reshape((-1, 3))   # [hw, 2]
                     else:
                         uv = self.uv
                         rix = np.random.permutation(uv.shape[0])
@@ -411,11 +327,12 @@ class RealEstate10k():
             query_intrinsics.append(intrinsics)
             query_c2w.append(cam_param.c2w_mat)
 
-        uvs = torch.Tensor(np.stack(uvs, axis=0)).float()
+        uvs = torch.Tensor(np.stack(uvs, axis=0)).float()   # [num_query_views, h, w, 2]
         ctxt_rgbs = []
         ctxt_intrinsics = []
         ctxt_c2w = []
 
+        # make context GTs
         for id in id_feat:
             rgb_file = rgb_files[id]
             rgb = data[rgb_file]

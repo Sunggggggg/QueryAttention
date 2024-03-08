@@ -3,7 +3,7 @@ import time
 import torch
 import torch.nn as nn
 import numpy as np
-from midas import dpt_depth, midas_net, midas_net_custom
+#from midas import dpt_depth, midas_net, midas_net_custom
 
 from utils import util
 
@@ -27,6 +27,7 @@ def encode_relative_ray(ray, transform):
     ray = ray.view(*s)
     return ray
 
+
 def encode_relative_point(ray, transform):
     """
     Args
@@ -48,8 +49,9 @@ def encode_relative_point(ray, transform):
     ray = ray.view(*s)
     return ray
 
+
 class CrossAttentionRenderer(nn.Module):
-    def __init__(self, no_sample=False, no_latent_concat=False, no_multiview=False, no_high_freq=False, model="midas_vit", uv=None, repeat_attention=True, n_view=1, npoints=64, num_hidden_units_phi=128):
+    def __init__(self, no_sample=False, no_latent_concat=False, no_multiview=False, no_high_freq=False, model="query", uv=None, repeat_attention=True, n_view=1, npoints=64, num_hidden_units_phi=128):
         super().__init__()
 
         self.n_view = n_view
@@ -72,37 +74,37 @@ class CrossAttentionRenderer(nn.Module):
         if model == "resnet":
             self.encoder = SpatialEncoder(use_first_pool=False, num_layers=4)
             self.latent_dim = 512
-        elif model == 'midas':
-            self.encoder = midas_net_custom.MidasNet_small(
-                path=None,
-                features=64,
-                backbone="efficientnet_lite3",
-                exportable=True,
-                non_negative=True,
-                blocks={'expand': True}
-            )
-            checkpoint = (
-                    "https://github.com/AlexeyAB/MiDaS/releases/download/midas_dpt/midas_v21_small-70d6b9c8.pt"
-            )
-            state_dict = torch.hub.load_state_dict_from_url(
-                checkpoint, map_location=torch.device('cpu'), progress=True, check_hash=True
-            )
-            self.encoder.load_state_dict(state_dict)
-            self.latent_dim = 512
-        elif model == 'midas_vit':
-            self.encoder = dpt_depth.DPTDepthModel(
-                path=None,
-                backbone="vitb_rn50_384",
-                non_negative=True,
-            )
-            checkpoint = (
-                "https://github.com/intel-isl/DPT/releases/download/1_0/dpt_hybrid-midas-501f0c75.pt"
-            )
+        # elif model == 'midas':
+        #     self.encoder = midas_net_custom.MidasNet_small(
+        #         path=None,
+        #         features=64,
+        #         backbone="efficientnet_lite3",
+        #         exportable=True,
+        #         non_negative=True,
+        #         blocks={'expand': True}
+        #     )
+        #     checkpoint = (
+        #             "https://github.com/AlexeyAB/MiDaS/releases/download/midas_dpt/midas_v21_small-70d6b9c8.pt"
+        #     )
+        #     state_dict = torch.hub.load_state_dict_from_url(
+        #         checkpoint, map_location=torch.device('cpu'), progress=True, check_hash=True
+        #     )
+        #     self.encoder.load_state_dict(state_dict)
+        #     self.latent_dim = 512
+        # elif model == 'midas_vit':
+        #     self.encoder = dpt_depth.DPTDepthModel(
+        #         path=None,
+        #         backbone="vitb_rn50_384",
+        #         non_negative=True,
+        #     )
+        #     checkpoint = (
+        #         "https://github.com/intel-isl/DPT/releases/download/1_0/dpt_hybrid-midas-501f0c75.pt"
+        #     )
 
-            self.encoder.pretrained.model.patch_embed.backbone.stem.conv = timm.models.layers.std_conv.StdConv2dSame(3, 64, kernel_size=(7, 7), stride=(2, 2), bias=False)
-            self.latent_dim = 512 + 64
+        #     self.encoder.pretrained.model.patch_embed.backbone.stem.conv = timm.models.layers.std_conv.StdConv2dSame(3, 64, kernel_size=(7, 7), stride=(2, 2), bias=False)
+        #     self.latent_dim = 512 + 64
 
-            self.conv_map = nn.Conv2d(3, 64, kernel_size=7, stride=1, padding=3)
+        #     self.conv_map = nn.Conv2d(3, 64, kernel_size=7, stride=1, padding=3)
         elif model == 'query':
             self.encoder = MultiScaleQueryTransformerDecoder(num_layers=3, num_queries=100, hidden_dim=256, nheads=8, depth=6)
             self.conv_map = nn.Conv2d(3, 64, kernel_size=7, stride=1, padding=3)
