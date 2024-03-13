@@ -1,20 +1,14 @@
-'''Implements a generic training loop.
-'''
-
 import os
+import cv2
 import shutil
-import time
 from collections import defaultdict
-from imageio import get_writer, imwrite
-import random
 import matplotlib.pyplot as plt
-
+import torchvision
 import numpy as np
 import torch
 import torch.distributed as dist
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
-
 from utils import util
 
 
@@ -140,96 +134,117 @@ def train(model, dataloaders, epochs, lr, epochs_til_checkpoint, model_dir, loss
                     pbar.update(1)
 
                 if not total_steps % steps_til_summary and rank == 0:
-                # if not total_steps % 100 and rank == 0:
                     print(", ".join([f"Epoch {epoch}"] + [f"{name} {loss.mean()}" for name, loss in losses.items()]))
+                    print("Running validation set...")
+                    with torch.no_grad():
+                        model.eval()
+                        val_losses = defaultdict(list)
+                        for val_i, (model_input, gt) in enumerate(val_dataloader):
+                            print("processing valid")
+                            if device == 'gpu':
+                                model_input = util.dict_to_gpu(model_input)
+                                gt = util.dict_to_gpu(gt)
 
-                    if val_dataloader is not None:
-                        print("Running validation set...")
-                        with torch.no_grad():
-                            model.eval()
-                            val_losses = defaultdict(list)
-                            for val_i, (model_input, gt) in enumerate(val_dataloader):
-                                print("processing valid")
-                                if device == 'gpu':
-                                    model_input = util.dict_to_gpu(model_input)
-                                    gt = util.dict_to_gpu(gt)
+                            rgb_full = model_input['query']['rgb']
+                            uv_full = model_input['query']['uv']
+                            nrays = uv_full.size(2)
+                            chunks = nrays // 512 + 1
+                            if model_name == 'query':
+                                z, _ = model.get_z(model_input)
+                            else:
+                                z = model.get_z(model_input)
 
-                                model_input_full = model_input
-                                rgb_full = model_input['query']['rgb']
-                                uv_full = model_input['query']['uv']
-                                nrays = uv_full.size(2)
-                                # chunks = nrays // 512 + 1
-                                chunks = nrays // 512 + 1
-                                # chunks = nrays // 384 + 1
-                                if model_name == 'query':
-                                    z, _ = model.get_z(model_input)
+                            rgb_chunks = torch.chunk(rgb_full, chunks, dim=2)
+                            uv_chunks = torch.chunk(uv_full, chunks, dim=2)
+
+                            model_outputs = []
+
+                            for rgb_chunk, uv_chunk in zip(rgb_chunks, uv_chunks):
+                                model_input['query']['rgb'] = rgb_chunk
+                                model_input['query']['uv'] = uv_chunk
+                                model_output = model(model_input, z=z, val=True)
+                                del model_output['z']
+                                del model_output['coords']
+                                del model_output['at_wts']
+
+                                model_output['pixel_val'] = model_output['pixel_val'].cpu()
+
+                                model_outputs.append(model_output)
+
+                            model_output_full = {}
+
+                            for k in model_outputs[0].keys():
+                                outputs = [model_output[k] for model_output in model_outputs]
+
+                                if k == "pixel_val":
+                                    val = torch.cat(outputs, dim=-3)
                                 else:
-                                    z = model.get_z(model_input)
+                                    # print(k, [o.size() for o in outputs])
+                                    val = torch.cat(outputs, dim=-2)
+                                model_output_full[k] = val
 
-                                rgb_chunks = torch.chunk(rgb_full, chunks, dim=2)
-                                uv_chunks = torch.chunk(uv_full, chunks, dim=2)
+                            model_output = model_output_full
+                            model_input['query']['rgb'] = rgb_full
 
-                                model_outputs = []
+                            val_loss, val_loss_smry = val_loss_fn(model_output, gt, val=True, model=model)
 
-                                for rgb_chunk, uv_chunk in zip(rgb_chunks, uv_chunks):
-                                    model_input['query']['rgb'] = rgb_chunk
-                                    model_input['query']['uv'] = uv_chunk
-                                    model_output = model(model_input, z=z, val=True)
-                                    del model_output['z']
-                                    del model_output['coords']
-                                    del model_output['at_wts']
+                            for name, value in val_loss.items():
+                                val_losses[name].append(value)
 
-                                    model_output['pixel_val'] = model_output['pixel_val'].cpu()
+                            # Render a video
 
-                                    model_outputs.append(model_output)
+                            # if val_i == batches_per_validation:
+                            break
 
-                                model_output_full = {}
-
-                                for k in model_outputs[0].keys():
-                                    outputs = [model_output[k] for model_output in model_outputs]
-
-                                    if k == "pixel_val":
-                                        val = torch.cat(outputs, dim=-3)
-                                    else:
-                                        # print(k, [o.size() for o in outputs])
-                                        val = torch.cat(outputs, dim=-2)
-                                    model_output_full[k] = val
-
-                                model_output = model_output_full
-                                model_input['query']['rgb'] = rgb_full
-
-                                val_loss, val_loss_smry = val_loss_fn(model_output, gt, val=True, model=model)
-
-                                for name, value in val_loss.items():
-                                    val_losses[name].append(value)
-
-                                # Render a video
-
-                                # if val_i == batches_per_validation:
-                                break
-
-                            for loss_name, loss in val_losses.items():
-                                single_loss = np.mean(np.concatenate([l.reshape(-1).cpu().numpy() for l in loss], axis=0))
-
-                                if rank == 0:
-                                    writer.add_scalar('val_' + loss_name, single_loss, total_steps)
+                        for loss_name, loss in val_losses.items():
+                            single_loss = np.mean(np.concatenate([l.reshape(-1).cpu().numpy() for l in loss], axis=0))
 
                             if rank == 0:
-                                if val_summary_fn is not None:
-                                    val_summary_fn(model, model_input, gt, val_loss_smry, model_output, writer, total_steps, 'val_', img_shape=(model.H, model.W), n_view=n_view)
+                                writer.add_scalar('val_' + loss_name, single_loss, total_steps)
 
-                                if (not total_steps % 1000):
-                                    model_input_full = model_input
-                                    rgb_full = model_input['query']['rgb']
-                                    cam2world = model_input['query']['cam2world']
-                                    cam2world = torch.matmul(torch.inverse(model_input['context']['cam2world']), cam2world)
-                                    model_input['query']['intrinsics'] = model_input['query']['intrinsics'][:1]
-                                    model_input['context']['intrinsics'] = model_input['context']['intrinsics'][:1]
-                                    model_input['context']['cam2world'] = torch.matmul(torch.inverse(model_input['context']['cam2world']), model_input['context']['cam2world'])[:1]
-                                    model_input['context']['rgb'] = model_input['context']['rgb'][:1]
-                                    z = [zi[:n_view] for zi in z]
+                        if rank == 0:
+                            if val_summary_fn is not None:
+                                val_summary_fn(model, model_input, gt, val_loss_smry, model_output, writer, total_steps, 'val_', img_shape=(model.H, model.W), n_view=n_view)
 
-                        model.train()
+                            if model_name == 'query':
+                                high_feat = z[1]  
+                                mask_high_feat = torch.stack([_high_feat/_high_feat.max() for _high_feat in high_feat], 0)
+                                mask_high_feat = torch.where(mask_high_feat >= 0.8, mask_high_feat, torch.Tensor([0.0]).type(torch.float32).to(mask_high_feat.device))
+                                context_images = util.flatten_first_two(model_input['context']['rgb'])# [2B, H, W, 3]
+                            
+                                for k in range(mask_high_feat.shape[1]) :
+                                    mask = mask_high_feat[:, k:k+1]         # [2, 1, H, W]
+                                    mask = mask.permute(0, 2, 3, 1).cpu().numpy()
+                                    mask1 = cv2.applyColorMap(np.uint8(mask[0]*255), cv2.COLORMAP_JET)  # [H, W, 3]
+                                    mask2 = cv2.applyColorMap(np.uint8(mask[1]*255), cv2.COLORMAP_JET)  # [H, W, 3]
+                                    mask1 = np.float32(mask1) / 255.
+                                    mask2 = np.float32(mask2) / 255.
+
+                                    cam1 = mask1 + np.float32(context_images[0].cpu().numpy())
+                                    cam2 = mask2 + np.float32(context_images[1].cpu().numpy())
+                                    cam1 = cam1 / np.max(cam1)
+                                    cam2 = cam2 / np.max(cam2)
+
+                                    cam1 = np.uint8(255 * cam1)
+                                    cam2 = np.uint8(255 * cam2)
+
+                                    cam = np.stack([cam1, cam2], axis=0)        # [2, H, W, 3]
+                                    cam = cam.transpose(0, -1, 1, 2)
+                                    writer.add_image(f"Attention Maps{k}", 
+                                                    torchvision.utils.make_grid(torch.tensor(cam), scale_each=False), total_steps)
+
+                            if (not total_steps % 1000):
+                                model_input_full = model_input
+                                rgb_full = model_input['query']['rgb']
+                                cam2world = model_input['query']['cam2world']
+                                cam2world = torch.matmul(torch.inverse(model_input['context']['cam2world']), cam2world)
+                                model_input['query']['intrinsics'] = model_input['query']['intrinsics'][:1]
+                                model_input['context']['intrinsics'] = model_input['context']['intrinsics'][:1]
+                                model_input['context']['cam2world'] = torch.matmul(torch.inverse(model_input['context']['cam2world']), model_input['context']['cam2world'])[:1]
+                                model_input['context']['rgb'] = model_input['context']['rgb'][:1]
+                                z = [zi[:n_view] for zi in z]
+
+                    model.train()
 
                 if (iters_til_checkpoint is not None) and (not total_steps % iters_til_checkpoint) and rank == 0:
                     torch.save({'model': model.state_dict(), 'optimizer': optimizer.state_dict()},

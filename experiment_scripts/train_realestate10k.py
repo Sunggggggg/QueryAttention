@@ -43,7 +43,7 @@ def multigpu_train(gpu, opt):
         val_dataset = RealEstate10k(img_root="/home/dev4/data/SKY/datasets/data_download/realestate/test",
                                       pose_root="/home/dev4/data/SKY/datasets/poses/realestate/test.mat",
                                       num_ctxt_views=opt.views, num_query_views=1, augment=False)
-        val_loader = DataLoader(val_dataset, batch_size=4, shuffle=True, drop_last=True, num_workers=4, pin_memory=False, worker_init_fn=worker_init_fn)
+        val_loader = DataLoader(val_dataset, batch_size=1, shuffle=True, drop_last=True, num_workers=4, pin_memory=False, worker_init_fn=worker_init_fn)
 
         return train_loader, val_loader
 
