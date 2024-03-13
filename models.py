@@ -92,7 +92,7 @@ class CrossAttentionRenderer(nn.Module):
         elif model == 'query':
             self.encoder = MultiviewEncoder(num_feat_levels=num_feat_levels, num_queries=num_queries, hidden_dim=hidden_dim, nheads=nheads, depth=depth)
             self.conv_map = nn.Conv2d(3, 64, kernel_size=7, stride=1, padding=3)
-            self.latent_dim = 100*2 + 64 
+            self.latent_dim = num_queries*2 + 64 
         else:
             self.encoder = UNetEncoder()
             self.latent_dim = 32
@@ -161,7 +161,7 @@ class CrossAttentionRenderer(nn.Module):
             rgb = (rgb + 1) / 2.
             rgb = util.normalize_imagenet(rgb)
             rgb = torch.cat([rgb], dim=1)
-        elif self.model == "midas" or self.model == "midas_vit":
+        elif self.model == "midas" or self.model == "midas_vit" or self.model == "query":
             rgb = (rgb + 1) / 2
             rgb = util.normalize_imagenet(rgb)
 
