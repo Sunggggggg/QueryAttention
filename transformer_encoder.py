@@ -97,6 +97,7 @@ class FeatureFusionBlock_custom(nn.Module):
 class Backbone(nn.Module):
     def __init__(self, name='resnet50', pretrained=True, freeze=True, num_feat_levels=4, hidden_dim=256) :
         super(Backbone, self).__init__()
+        self.name = name
         self.num_feat_levels = num_feat_levels
         # 
         if name == 'resnet50' and pretrained:
