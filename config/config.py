@@ -4,7 +4,7 @@ def config_parser():
     parser = configargparse.ArgumentParser()
     parser.add_argument("--config", is_config_file=True)
 
-    parser.add_argument('--logging_root', type=str, default='/output')
+    parser.add_argument('--logging_root', type=str, default='./output')
     parser.add_argument('--data_root', type=str, default='/om2/user/egger/MultiClassSRN/data/NMR_Dataset', required=False)
     parser.add_argument('--val_root', type=str, default=None, required=False)
     parser.add_argument('--network', type=str, default='relu')
