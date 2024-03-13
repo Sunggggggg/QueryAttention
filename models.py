@@ -10,7 +10,7 @@ from utils import util
 import geometry
 from epipolar import project_rays
 from encoder import SpatialEncoder, ImageEncoder, UNetEncoder
-from transformer_encoder import MultiScaleQueryTransformerDecoder
+from transformer_encoder import MultiviewEncoder
 from resnet_block_fc import ResnetFC
 import timm
 
@@ -52,9 +52,16 @@ def encode_relative_point(ray, transform):
 class CrossAttentionRenderer(nn.Module):
     def __init__(self, no_sample=False, no_latent_concat=False, no_multiview=False, no_high_freq=False, model="query", uv=None, repeat_attention=True, n_view=1, npoints=64, num_hidden_units_phi=128):
         super().__init__()
-
         self.n_view = n_view
+        self.repeat_attention = repeat_attention
+        self.no_sample = no_sample
+        self.no_latent_concat = no_latent_concat
+        self.no_multiview = no_multiview
+        self.no_high_freq = no_high_freq
+        self.model = model
+        self.num_hidden_units_phi = num_hidden_units_phi
 
+        # Sample points
         if self.n_view == 2 or self.n_view == 1:
             self.npoints = 64
         else:
@@ -63,56 +70,19 @@ class CrossAttentionRenderer(nn.Module):
         if npoints:
             self.npoints = npoints
 
-        self.repeat_attention = repeat_attention
-
-        self.no_sample = no_sample
-        self.no_latent_concat = no_latent_concat
-        self.no_multiview = no_multiview
-        self.no_high_freq = no_high_freq
-
+        # Encoder
         if model == "resnet":
             self.encoder = SpatialEncoder(use_first_pool=False, num_layers=4)
             self.latent_dim = 512
-        # elif model == 'midas':
-        #     self.encoder = midas_net_custom.MidasNet_small(
-        #         path=None,
-        #         features=64,
-        #         backbone="efficientnet_lite3",
-        #         exportable=True,
-        #         non_negative=True,
-        #         blocks={'expand': True}
-        #     )
-        #     checkpoint = (
-        #             "https://github.com/AlexeyAB/MiDaS/releases/download/midas_dpt/midas_v21_small-70d6b9c8.pt"
-        #     )
-        #     state_dict = torch.hub.load_state_dict_from_url(
-        #         checkpoint, map_location=torch.device('cpu'), progress=True, check_hash=True
-        #     )
-        #     self.encoder.load_state_dict(state_dict)
-        #     self.latent_dim = 512
-        # elif model == 'midas_vit':
-        #     self.encoder = dpt_depth.DPTDepthModel(
-        #         path=None,
-        #         backbone="vitb_rn50_384",
-        #         non_negative=True,
-        #     )
-        #     checkpoint = (
-        #         "https://github.com/intel-isl/DPT/releases/download/1_0/dpt_hybrid-midas-501f0c75.pt"
-        #     )
-
-        #     self.encoder.pretrained.model.patch_embed.backbone.stem.conv = timm.models.layers.std_conv.StdConv2dSame(3, 64, kernel_size=(7, 7), stride=(2, 2), bias=False)
-        #     self.latent_dim = 512 + 64
-
-        #     self.conv_map = nn.Conv2d(3, 64, kernel_size=7, stride=1, padding=3)
         elif model == 'query':
-            self.encoder = MultiScaleQueryTransformerDecoder(num_layers=3, num_queries=100, hidden_dim=256, nheads=8, depth=6)
+            self.encoder = MultiviewEncoder(num_layers=3, num_queries=100, hidden_dim=256, nheads=8, depth=6)
             self.conv_map = nn.Conv2d(3, 64, kernel_size=7, stride=1, padding=3)
             self.latent_dim = 100*2 + 64 
-        
         else:
             self.encoder = UNetEncoder()
             self.latent_dim = 32
-
+        
+        # Pixel align feature map
         if self.n_view > 1 and (not self.no_latent_concat):
             self.query_encode_latent = nn.Conv2d(self.latent_dim + 3, self.latent_dim, 1)
             self.query_encode_latent_2 = nn.Conv2d(self.latent_dim, self.latent_dim // 2 , 1)
@@ -123,11 +93,8 @@ class CrossAttentionRenderer(nn.Module):
         else:
             self.update_val_merge = nn.Conv2d(self.latent_dim + 6, self.latent_dim, 1)
 
-        self.model = model
-        self.num_hidden_units_phi = num_hidden_units_phi
-
+        # 
         hidden_dim = 128
-
         if not self.no_latent_concat:
             self.latent_value = nn.Conv2d(self.latent_dim * self.n_view, self.latent_dim, 1)
             self.key_map = nn.Conv2d(self.latent_dim * self.n_view, hidden_dim, 1)

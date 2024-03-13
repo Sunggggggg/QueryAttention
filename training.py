@@ -1,3 +1,6 @@
+'''Implements a generic training loop.
+'''
+
 import os
 import shutil
 import time
@@ -43,7 +46,7 @@ def training(train_function, dataloader_callback, dataloader_iters, dataloader_p
 def train(model, dataloaders, epochs, lr, epochs_til_checkpoint, model_dir, loss_fn, steps_til_summary=1,
           summary_fn=None, iters_til_checkpoint=None, clip_grad=False, val_loss_fn=None, val_summary_fn=None,
           overwrite=True, optimizer=None, batches_per_validation=1, gpus=1, rank=0, max_steps=None,
-          loss_schedules=None, device='gpu', n_view=1):
+          loss_schedules=None, device='gpu', n_view=1, model_name='query'):
 
     if optimizer is None:
         assert False
@@ -63,7 +66,7 @@ def train(model, dataloaders, epochs, lr, epochs_til_checkpoint, model_dir, loss
                 if val == 'y' or overwrite:
                     shutil.rmtree(model_dir)
 
-        os.makedirs(model_dir)
+        os.makedirs(model_dir, exist_ok=True)
 
         summaries_dir = os.path.join(model_dir, 'summaries')
         util.cond_mkdir(summaries_dir)
@@ -158,8 +161,10 @@ def train(model, dataloaders, epochs, lr, epochs_til_checkpoint, model_dir, loss
                                 # chunks = nrays // 512 + 1
                                 chunks = nrays // 512 + 1
                                 # chunks = nrays // 384 + 1
-
-                                z = model.get_z(model_input)
+                                if model_name == 'query':
+                                    z, _ = model.get_z(model_input)
+                                else:
+                                    z = model.get_z(model_input)
 
                                 rgb_chunks = torch.chunk(rgb_full, chunks, dim=2)
                                 uv_chunks = torch.chunk(uv_full, chunks, dim=2)
@@ -223,7 +228,6 @@ def train(model, dataloaders, epochs, lr, epochs_til_checkpoint, model_dir, loss
                                     model_input['context']['cam2world'] = torch.matmul(torch.inverse(model_input['context']['cam2world']), model_input['context']['cam2world'])[:1]
                                     model_input['context']['rgb'] = model_input['context']['rgb'][:1]
                                     z = [zi[:n_view] for zi in z]
-
 
                         model.train()
 

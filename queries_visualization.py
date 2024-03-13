@@ -1,6 +1,7 @@
 import os
 import random
 import numpy as np
+import cv2
 import torch
 import torchvision
 from torch.utils.data import DataLoader
@@ -45,10 +46,11 @@ if __name__ == "__main__" :
     weights = torch.load(weight_path, map_location=torch.device('cpu'))
     model.load_state_dict(weights['model'], strict=False)
     model.cuda().eval()
+
     # 
     backbone = model.encoder.backbone
-    query_feat = model.encoder.query_feat
-    query_embed = model.encoder.query_embed
+    query_feat = model.encoder.query_feat.weight
+    query_embed = model.encoder.query_embed.weight
 
     query_featmap_path = os.path.join(args.logging_root, 'QueryAttention')
     os.makedirs(query_featmap_path, exist_ok=True)
@@ -60,17 +62,82 @@ if __name__ == "__main__" :
             model_input = util.dict_to_gpu(model_input)
             gt = util.dict_to_gpu(gt)
 
-            query_images = model_input['query']['rgb']
+            rgb_full = model_input['query']['rgb']
+            uv_full = model_input['query']['uv']
+
+            nrays = uv_full.size(2)
+            z, _ = model.get_z(model_input)
+         
+            rgb_chunks = torch.chunk(rgb_full, 9, dim=2)
+            uv_chunks = torch.chunk(uv_full, 9, dim=2)
+
+            model_outputs = []
+
+            for rgb_chunk, uv_chunk in zip(rgb_chunks, uv_chunks):
+                model_input['query']['rgb'] = rgb_chunk
+                model_input['query']['uv'] = uv_chunk
+
+                model_output = model(model_input, z=z, val=True)
+
+                model_outputs.append(model_output)
+
+            model_output_full = {}
+            for k in ['rgb', 'valid_mask', 'depth_ray']:
+                outputs = [model_output[k] for model_output in model_outputs]
+
+                if k == "pixel_val":
+                    val = torch.cat(outputs, dim=-3)
+                else:
+                    val = torch.cat(outputs, dim=-2)
+                model_output_full[k] = val
+
+            rgb = model_output_full['rgb'].view(256, 256, 3)
+            valid_mask = model_output_full['valid_mask'].view(256, 256, 1)
+            rgb = ((rgb + 1) * 0.5).detach() * valid_mask + 0.5 * (1 - valid_mask) * torch.ones_like(rgb)
+            rgb = torch.clamp(rgb, -1, 1)
+            
+            writer.add_image("Prediction",torchvision.utils.make_grid(rgb[None, ...].permute(0, 3, 1, 2), scale_each=False)
+                              , total_iter)
+
+            # 
+            query_images = rgb_full      #[B, 1, HW, 3]
+            query_images = query_images.view(1, 256, 256, 3)
             query_images = query_images.permute(0, 3, 1, 2)
-            writer.add_image("GT",
+            writer.add_image("Queryview",
                              torchvision.utils.make_grid(query_images, scale_each=False, normalize=True).cpu().numpy(), total_iter)
 
-
-            z, _ = model.get_z(model_input)     # [B, dim1, H, W], [B, dim2, H, W], 
-
-            for i, feat in enumerate(z) :
-                writer.add_image(f"Attention Maps{i}", 
-                                 torchvision.utils.make_grid(feat, scale_each=False, normalize=True).cpu().numpy(), total_iter)
+            context_images = util.flatten_first_two(model_input['context']['rgb'])# [2B, H, W, 3]
+            _context_images = context_images.permute(0, 3, 1, 2)                   # [2B, 3, H, W]
+            writer.add_image("Contextviews",
+                             torchvision.utils.make_grid(_context_images, scale_each=False, normalize=True).cpu().numpy(), total_iter)
             
+            # 
+            high_feat = z[1]       # [2, dim1, H, W]      dim1=dim2=100
+            mask_high_feat = torch.stack([_high_feat/_high_feat.max() for _high_feat in high_feat], 0)   # 
+            print(mask_high_feat.shape)
+            mask_high_feat = torch.where(mask_high_feat >= 0.99, mask_high_feat, 
+                                         torch.Tensor([0.0]).type(torch.float32).to(mask_high_feat.device))
+            
+            for k in range(100) :
+                mask = mask_high_feat[:, k:k+1]         # [2, 1, H, W]
+                mask = mask.permute(0, 2, 3, 1).cpu().numpy()
+                mask1 = cv2.applyColorMap(np.uint8(mask[0]*255), cv2.COLORMAP_JET)  # [H, W, 3]
+                mask2 = cv2.applyColorMap(np.uint8(mask[1]*255), cv2.COLORMAP_JET)  # [H, W, 3]
+                mask1 = np.float32(mask1) / 255.
+                mask2 = np.float32(mask2) / 255.
+
+                cam1 = mask1 + np.float32(context_images[0].cpu().numpy())
+                cam2 = mask2 + np.float32(context_images[1].cpu().numpy())
+                cam1 = cam1 / np.max(cam1)
+                cam2 = cam2 / np.max(cam2)
+
+                cam1 = np.uint8(255 * cam1)
+                cam2 = np.uint8(255 * cam2)
+
+                cam = np.stack([cam1, cam2], axis=0)        # [2, H, W, 3]
+                cam = cam.transpose(0, -1, 1, 2)
+                writer.add_image(f"Attention Maps{k}", 
+                                torchvision.utils.make_grid(torch.tensor(cam), scale_each=False), total_iter)
+        
             
             break
