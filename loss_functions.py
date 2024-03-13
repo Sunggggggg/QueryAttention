@@ -144,6 +144,6 @@ class LFLoss():
         
         if self.contra and (not val):
             contra_losses = model_out['contra_losses']
-            loss_dict['contra_loss'] = torch.tensor(contra_losses).mean()
+            loss_dict['contra_loss'] = contra_losses.mean()
             
         return loss_dict, {}
