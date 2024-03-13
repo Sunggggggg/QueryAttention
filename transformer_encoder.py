@@ -152,7 +152,7 @@ class Backbone(nn.Module):
         layer2 = self.branch.layer2(layer2)   # hidden_dim
         layer3 = self.branch.layer3(layer3)   # hidden_dim
         
-        return [layer3, layer2, layer1]
+        return [layer3, layer2, layer1][::-1]
 
 class SelfAttentionLayer(nn.Module):
     def __init__(self, d_model, nhead, dropout=0.0, activation="relu"):
@@ -290,9 +290,6 @@ class MultiviewEncoder(nn.Module):
             # 5. Feed Forward
             self.ffn_layers3.append(FFNLayer(d_model=hidden_dim, dim_feedforward=dim_feedforward, dropout=0.0))
             self.ffn_layers4.append(FFNLayer(d_model=hidden_dim, dim_feedforward=dim_feedforward, dropout=0.0))
-        # 
-        self.encode1 = nn.Conv2d(num_queries*2, num_queries, kernel_size=1, stride=1)
-        self.encode2 = nn.Conv2d(num_queries*2, num_queries, kernel_size=1, stride=1)
 
         self.refinenet1 = FeatureFusionBlock_custom(num_queries, nn.ReLU(False), deconv=False, bn=False, expand=False, align_corners=True)
         self.refinenet2 = FeatureFusionBlock_custom(num_queries, nn.ReLU(False), deconv=False, bn=False, expand=False, align_corners=True)
@@ -347,8 +344,8 @@ class MultiviewEncoder(nn.Module):
             query2 = self.ffn_layers2[i](query2)
             #
             _query1, _query2 = query1, query2
-            query1 = self.cross_attention_layers1[i](query1, _query2, cam_pos=pose_embed1+query_embed, query_pos=query_embed)
-            query2 = self.cross_attention_layers2[i](query2, _query1, cam_pos=pose_embed2+query_embed, query_pos=query_embed)
+            query1 = self.cross_attention_layers1[i](query1, _query2, cam_pos=query_embed, query_pos=query_embed)
+            query2 = self.cross_attention_layers2[i](query2, _query1, cam_pos=query_embed, query_pos=query_embed)
 
             query1 = self.ffn_layers3[i](query1)
             query2 = self.ffn_layers4[i](query2)
@@ -365,7 +362,7 @@ class MultiviewEncoder(nn.Module):
         
         contra_loss = self.loss_func(query1, query2)  
         # 
-        path_3 = self.refinenet3(keypoint_maps[3])
+        path_3 = self.refinenet3(keypoint_maps[2])
         path_2 = self.refinenet2(path_3, keypoint_maps[1])
         path_1 = self.refinenet1(path_2, keypoint_maps[0])
 
@@ -375,4 +372,5 @@ if __name__ == '__main__' :
     x = torch.rand((4, 3, 256, 256))
     y = torch.rand((4, 16))
     model = MultiviewEncoder()
+    model(x, y)
     print(sum(p.numel() for p in model.parameters() if p.requires_grad))
