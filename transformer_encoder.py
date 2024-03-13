@@ -371,6 +371,7 @@ class MultiviewEncoder(nn.Module):
 if __name__ == '__main__' :
     x = torch.rand((4, 3, 256, 256))
     y = torch.rand((4, 16))
+    print(y.device)
     model = MultiviewEncoder()
     model(x, y)
     print(sum(p.numel() for p in model.parameters() if p.requires_grad))

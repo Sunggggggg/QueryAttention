@@ -79,6 +79,7 @@ class ContrastiveLoss(torch.nn.Module):
     def forward(self, query1, query2, labels=None):
         B = query1.shape[0]
         labels = self.labels.unsqueeze(0).repeat(B, 1)
+        labels = labels.to(query1.device)
 
         query_sim = query1 @ query2.permute(0, 2, 1)
         loss = F.cross_entropy(query_sim, labels)
