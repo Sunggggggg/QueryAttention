@@ -50,7 +50,22 @@ def encode_relative_point(ray, transform):
     return ray
 
 class CrossAttentionRenderer(nn.Module):
-    def __init__(self, no_sample=False, no_latent_concat=False, no_multiview=False, no_high_freq=False, model="query", uv=None, repeat_attention=True, n_view=1, npoints=64, num_hidden_units_phi=128):
+    def __init__(self, no_sample=False, 
+                 no_latent_concat=False, 
+                 no_multiview=False, 
+                 no_high_freq=False, 
+                 model="query", 
+                 uv=None, 
+                 repeat_attention=True, 
+                 n_view=1, 
+                 npoints=64, 
+                 num_hidden_units_phi=128,
+                 num_feat_levels=3,
+                 num_queries=32,
+                 hidden_dim=256,
+                 nheads=8,
+                 depth=3*3
+                 ):
         super().__init__()
         self.n_view = n_view
         self.repeat_attention = repeat_attention
@@ -72,10 +87,10 @@ class CrossAttentionRenderer(nn.Module):
 
         # Encoder
         if model == "resnet":
-            self.encoder = SpatialEncoder(use_first_pool=False, num_layers=4)
+            self.encoder = SpatialEncoder(use_first_pool=False, num_layers=num_feat_levels)
             self.latent_dim = 512
         elif model == 'query':
-            self.encoder = MultiviewEncoder(num_layers=3, num_queries=100, hidden_dim=256, nheads=8, depth=6)
+            self.encoder = MultiviewEncoder(num_feat_levels=num_feat_levels, num_queries=num_queries, hidden_dim=hidden_dim, nheads=nheads, depth=depth)
             self.conv_map = nn.Conv2d(3, 64, kernel_size=7, stride=1, padding=3)
             self.latent_dim = 100*2 + 64 
         else:
@@ -103,7 +118,6 @@ class CrossAttentionRenderer(nn.Module):
             self.latent_value = nn.Conv2d(self.latent_dim, self.latent_dim, 1)
             self.key_map = nn.Conv2d(self.latent_dim, hidden_dim, 1)
             self.key_map_2 = nn.Conv2d(hidden_dim, hidden_dim, 1)
-
 
         self.query_embed = nn.Conv2d(16, hidden_dim, 1)
         self.query_embed_2 = nn.Conv2d(hidden_dim, hidden_dim, 1)
