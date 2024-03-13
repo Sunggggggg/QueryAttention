@@ -4,6 +4,16 @@ import torch.nn as nn
 from torch.nn import functional as F
 from loss_functions import ContrastiveLoss
 
+def _get_activation_fn(activation):
+    """Return an activation function given a string"""
+    if activation == "relu":
+        return F.relu
+    if activation == "gelu":
+        return F.gelu
+    if activation == "glu":
+        return F.glu
+    raise RuntimeError(F"activation should be relu/gelu, not {activation}.")
+
 def QueryAggregation(queries1, queries2):
     """
     queries1, queries2 : [B, Q, e]
@@ -85,14 +95,20 @@ class FeatureFusionBlock_custom(nn.Module):
         return output
 
 class Backbone(nn.Module):
-    def __init__(self, name='resnet50', num_layers=4, pretrained=True, freeze=True, hidden_dim=256) :
+    def __init__(self, name='resnet50', pretrained=True, freeze=True, num_feat_levels=4, hidden_dim=256) :
         super(Backbone, self).__init__()
+        self.num_feat_levels = num_feat_levels
         # 
         if name == 'resnet50' and pretrained:
             #weights = torchvision.models.ResNet50_Weights
             backbone = torchvision.models.resnet50(pretrained=pretrained)
-            feat_dim = [2**(i+8) for i in range(num_layers)]
-            
+            feat_dim = [2**8, 2**9, 2**10]
+        
+        elif name == 'swin_b' and pretrained :
+            weights = torchvision.models.Swin_B_Weights
+            backbone = torchvision.models.swin_b(weights=weights)
+            feat_dim = [2**7, 2**8, 2**9]
+        
         if freeze :
             for name, param in backbone.named_parameters():
                 param.requires_grad_(False)
@@ -104,36 +120,38 @@ class Backbone(nn.Module):
         self.branch.layer1 = nn.Conv2d(feat_dim[0], hidden_dim, kernel_size=3, stride=1, padding=1, bias=False, groups=1)
         self.branch.layer2 = nn.Conv2d(feat_dim[1], hidden_dim, kernel_size=3, stride=1, padding=1, bias=False, groups=1)
         self.branch.layer3 = nn.Conv2d(feat_dim[2], hidden_dim, kernel_size=3, stride=1, padding=1, bias=False, groups=1)
-        #self.branch.layer4 = nn.Conv2d(feat_dim[3], hidden_dim, kernel_size=3, stride=1, padding=1, bias=False, groups=1)
 
     def forward(self, x):
-        #
-        x = self.backbone.conv1(x)
-        x = self.backbone.bn1(x)
-        x = self.backbone.relu(x)
+        if self.name == 'resnet50':
+            #
+            x = self.backbone.conv1(x)
+            x = self.backbone.bn1(x)
+            x = self.backbone.relu(x)
 
-        # 
-        layer1 = self.backbone.layer1(x)        # 256
-        layer2 = self.backbone.layer2(layer1)   # 512
-        layer3 = self.backbone.layer3(layer2)   # 1024
-        #layer4 = self.backbone.layer4(layer3)   # 2048
-        
+            # 
+            layer1 = self.backbone.layer1(x)        # 256
+            layer2 = self.backbone.layer2(layer1)   # 512
+            layer3 = self.backbone.layer3(layer2)   # 1024
+
+        elif self.name == 'swin_b' :
+            layer1 = self.backbone.features[0](x)
+            layer1 = self.backbone.features[1](layer1)  # 128
+
+            layer2 = self.backbone.features[2](layer1)
+            layer2 = self.backbone.features[3](layer2)  # 256
+
+            layer3 = self.backbone.features[4](layer2)
+            layer3 = self.backbone.features[5](layer3)  # 512
+
+            layer1 = layer1.permute(0, 3, 1, 2)
+            layer2 = layer2.permute(0, 3, 1, 2)
+            layer3 = layer3.permute(0, 3, 1, 2)
+
         layer1 = self.branch.layer1(layer1)   # hidden_dim
         layer2 = self.branch.layer2(layer2)   # hidden_dim
         layer3 = self.branch.layer3(layer3)   # hidden_dim
-        #layer4 = self.branch.layer4(layer4)   # hidden_dim
         
-        return [layer1, layer2, layer3]
-
-def _get_activation_fn(activation):
-    """Return an activation function given a string"""
-    if activation == "relu":
-        return F.relu
-    if activation == "gelu":
-        return F.gelu
-    if activation == "glu":
-        return F.glu
-    raise RuntimeError(F"activation should be relu/gelu, not {activation}.")
+        return [layer3, layer2, layer1]
 
 class SelfAttentionLayer(nn.Module):
     def __init__(self, d_model, nhead, dropout=0.0, activation="relu"):
@@ -191,7 +209,7 @@ class CrossAttentionLayer(nn.Module):
         return queries
 
 class FFNLayer(nn.Module):
-    def __init__(self, d_model, dim_feedforward=2048, dropout=0.0, activation="relu"):
+    def __init__(self, d_model, dim_feedforward=2048, dropout=0.0, activation="gelu"):
         super().__init__()
         self.linear1 = nn.Linear(d_model, dim_feedforward)
         self.dropout = nn.Dropout(dropout)
@@ -213,15 +231,17 @@ class FFNLayer(nn.Module):
         queries = self.norm(queries)
         return queries
 
-class MultiScaleQueryTransformerDecoder(nn.Module):
-    def __init__(self, num_layers=3, num_queries=100, hidden_dim=256, dim_feedforward=2048, nheads=8, depth=6) :
-        super().__init__()
-        self.num_layers = num_layers
+class MultiviewEncoder(nn.Module):
+    def __init__(self, name='resnet50', num_feat_levels=3, 
+                 num_queries=16, hidden_dim=256, dim_feedforward=2048, nheads=8, depth=9) :
+        super(MultiviewEncoder, self).__init__()
+        self.num_feat_levels = num_feat_levels
         self.num_queries = num_queries
         self.hidden_dim = hidden_dim
         self.depth = depth
+
         # Backbone
-        self.backbone = Backbone(pretrained=True, freeze=True, hidden_dim=hidden_dim, num_layers=num_layers)
+        self.backbone = Backbone(name=name, pretrained=True, freeze=True, num_feat_levels=num_feat_levels, hidden_dim=hidden_dim)
 
         # Learnable query
         self.query_feat = nn.Embedding(num_queries, hidden_dim)
@@ -230,37 +250,45 @@ class MultiScaleQueryTransformerDecoder(nn.Module):
         # Camera pose embedding
         self.cam_pose_embed = nn.Linear(4*4, hidden_dim)
 
+        # level embedding
+        self.level_embed = nn.Embedding(num_feat_levels, hidden_dim)    # [3, 256]
+
+
         # Block
-        self.transformer_self_attention_layers = nn.ModuleList()
-        self.transformer_cross_attention_layers1 = nn.ModuleList()
-        self.transformer_cross_attention_layers2 = nn.ModuleList()
-        self.transformer_ffn_layers = nn.ModuleList()
+        self.query_activation1 = nn.ModuleList()
+        self.query_activation2 = nn.ModuleList()
+        self.self_attention_layers1 = nn.ModuleList()
+        self.self_attention_layers2 = nn.ModuleList()
+        self.cross_attention_layers1 = nn.ModuleList()
+        self.cross_attention_layers2 = nn.ModuleList()
+        self.ffn_layers1 = nn.ModuleList()
+        self.ffn_layers2 = nn.ModuleList()
+        self.ffn_layers3 = nn.ModuleList()
+        self.ffn_layers4 = nn.ModuleList()
 
+
+        # 1. Query Activation
+        # 2. Self Attention
+        # 3. Feed Forward
+        # 4. Cross Attention
+        # 5. Feed Forward
+        # 6. 
         for _ in range(depth) :
-            self.transformer_self_attention_layers.append(
-                SelfAttentionLayer(
-                    d_model=hidden_dim,
-                    nhead=nheads,
-                    dropout=0.0))
-
-            self.transformer_cross_attention_layers1.append(
-                CrossAttentionLayer(
-                    d_model=hidden_dim,
-                    nhead=nheads,
-                    dropout=0.0))
-            
-            self.transformer_cross_attention_layers2.append(
-                CrossAttentionLayer(
-                    d_model=hidden_dim,
-                    nhead=nheads,
-                    dropout=0.0))
-
-            self.transformer_ffn_layers.append(
-                FFNLayer(
-                    d_model=hidden_dim,
-                    dim_feedforward=dim_feedforward,
-                    dropout=0.0))
-        
+            # 1. Query Activation
+            self.query_activation1.append(CrossAttentionLayer(d_model=hidden_dim, nhead=nheads, dropout=0.0))
+            self.query_activation2.append(CrossAttentionLayer(d_model=hidden_dim, nhead=nheads, dropout=0.0))
+            # 2. Self Attention
+            self.self_attention_layers1.append(SelfAttentionLayer(d_model=hidden_dim, nhead=nheads, dropout=0.0))
+            self.self_attention_layers2.append(SelfAttentionLayer(d_model=hidden_dim, nhead=nheads, dropout=0.0))
+            # 3. Feed Forward
+            self.ffn_layers1.append(FFNLayer(d_model=hidden_dim, dim_feedforward=dim_feedforward, dropout=0.0))
+            self.ffn_layers2.append(FFNLayer(d_model=hidden_dim, dim_feedforward=dim_feedforward, dropout=0.0))
+            # 4. Cross Attention
+            self.cross_attention_layers1.append(CrossAttentionLayer(d_model=hidden_dim, nhead=nheads, dropout=0.0))
+            self.cross_attention_layers2.append(CrossAttentionLayer(d_model=hidden_dim, nhead=nheads, dropout=0.0))
+            # 5. Feed Forward
+            self.ffn_layers3.append(FFNLayer(d_model=hidden_dim, dim_feedforward=dim_feedforward, dropout=0.0))
+            self.ffn_layers4.append(FFNLayer(d_model=hidden_dim, dim_feedforward=dim_feedforward, dropout=0.0))
         # 
         self.encode1 = nn.Conv2d(num_queries*2, num_queries, kernel_size=1, stride=1)
         self.encode2 = nn.Conv2d(num_queries*2, num_queries, kernel_size=1, stride=1)
@@ -268,7 +296,6 @@ class MultiScaleQueryTransformerDecoder(nn.Module):
         self.refinenet1 = FeatureFusionBlock_custom(num_queries, nn.ReLU(False), deconv=False, bn=False, expand=False, align_corners=True)
         self.refinenet2 = FeatureFusionBlock_custom(num_queries, nn.ReLU(False), deconv=False, bn=False, expand=False, align_corners=True)
         self.refinenet3 = FeatureFusionBlock_custom(num_queries, nn.ReLU(False), deconv=False, bn=False, expand=False, align_corners=True)
-        #self.refinenet4 = FeatureFusionBlock_custom(num_queries, nn.ReLU(False), deconv=False, bn=False, expand=False, align_corners=True)
 
         # Loss func
         self.loss_func = ContrastiveLoss(self.num_queries)
@@ -283,72 +310,68 @@ class MultiScaleQueryTransformerDecoder(nn.Module):
         x = x.reshape(s[0]//nviews, nviews, *s[1:])
         img1, img2 = x[:, 0], x[:, 1]       # [B, 3, H, W]
 
+        # Query embedding
+        B = x.shape[0]
+        query = self.query_feat.weight.unsqueeze(0).repeat(B, 1, 1)
+        query_embed = self.query_embed.weight.unsqueeze(0).repeat(B, 1, 1)  # [B, Q, e]
+
         # Camera pose embedding
         pose_embed = self.cam_pose_embed(rel_transform)                     # [2B, hidden_dim]
         pose_embed = pose_embed.reshape(s[0]//nviews, nviews, -1)
-        
-        # 
-        B = x.shape[0]
-        query_embed = self.query_embed.weight.unsqueeze(0).repeat(B, 1, 1)  # [B, Q, e]
-        output = self.query_feat.weight.unsqueeze(0).repeat(B, 1, 1)
 
         # Feature map
-        keypoint_maps, contra_losses =[], []
+        keypoint_maps =[]
         feats1, feats2 = self.backbone(img1), self.backbone(img2)   # [layer3, layer2, layer1]
-        for l in range(self.num_layers):
-            feat1, feat2 = feats1[l], feats2[l]     # [B, hidden_dim, H, W]
+        for i in range(self.depth) :
+            level_index = i % self.num_feat_levels                      # [0, 1, 2]
+            feat1, feat2 = feats1[level_index], feats2[level_index]     # [B, hidden_dim, H, W]
             B, _, h, w = feat1.shape 
 
             feat1 = feat1.reshape(B, self.hidden_dim, -1).permute(0, 2, 1)   # [B, hw, e]
             feat2 = feat2.reshape(B, self.hidden_dim, -1).permute(0, 2, 1)   # [B, hw, e]
 
-            pose_embed1 = pose_embed[:, 0].unsqueeze(1).repeat(1, h*w, 1)
-            pose_embed2 = pose_embed[:, 1].unsqueeze(1).repeat(1, h*w, 1)
-
-            for d in range(self.depth):
-                #
-                output1 = self.transformer_cross_attention_layers1[d](
-                    output, feat1, cam_pos=pose_embed1, query_pos=query_embed
-                )
-                output2 = self.transformer_cross_attention_layers1[d](
-                    output, feat2, cam_pos=pose_embed2, query_pos=query_embed
-                )
-
-                contra_loss = self.loss_func(output1, output2)
-                output = QueryAggregation(output1, output2)
-
-                #
-                output = self.transformer_self_attention_layers[d](
-                    output, query_pos=query_embed
-                )
-                output = self.transformer_ffn_layers[d](
-                    output
-                )
+            #
+            pose_embed1 = pose_embed[:, 0].unsqueeze(1).repeat(1, h*w, 1)    # [B, hw, e]
+            pose_embed2 = pose_embed[:, 1].unsqueeze(1).repeat(1, h*w, 1) 
             # 
-            keypoint_map11 = torch.matmul(output, feat1.transpose(1,2)).reshape(B, self.num_queries, h, w)      # [B, Q, e]*[B, e, hw] = [B, Q, h, w]
-            keypoint_map21 = torch.matmul(output2, feat1.transpose(1,2)).reshape(B, self.num_queries, h, w)
-            keypoint_map1 = torch.cat([keypoint_map11, keypoint_map21], dim=1)                                  # [B, 2Q, h, w]
-            keypoint_map1 = self.encode1(keypoint_map1)
+            level_embed = self.level_embed.weight[level_index].unsqueeze(0).unsqueeze(0).repeat(B, h*w, 1)  # [B, hw, e]
+           
+            query1 = self.query_activation1[i](query, feat1, cam_pos=pose_embed1+level_embed, query_pos=query_embed)
+            query2 = self.query_activation2[i](query, feat2, cam_pos=pose_embed2+level_embed, query_pos=query_embed)
+            # 
+            query1 = self.self_attention_layers1[i](query1, query_pos=query_embed)
+            query2 = self.self_attention_layers2[i](query2, query_pos=query_embed)
+            # 
+            query1 = self.ffn_layers1[i](query1)
+            query2 = self.ffn_layers2[i](query2)
+            #
+            _query1, _query2 = query1, query2
+            query1 = self.cross_attention_layers1[i](query1, _query2, cam_pos=pose_embed1+query_embed, query_pos=query_embed)
+            query2 = self.cross_attention_layers2[i](query2, _query1, cam_pos=pose_embed2+query_embed, query_pos=query_embed)
 
-            keypoint_map22 = torch.matmul(output, feat2.transpose(1,2)).reshape(B, self.num_queries, h, w)
-            keypoint_map12 = torch.matmul(output1, feat2.transpose(1,2)).reshape(B, self.num_queries, h, w)
-            keypoint_map2 = torch.cat([keypoint_map12, keypoint_map22], dim=1)                                  # [B, 2Q, h, w]
-            keypoint_map2 = self.encode2(keypoint_map2)
+            query1 = self.ffn_layers3[i](query1)
+            query2 = self.ffn_layers4[i](query2)
+            #
+            query = (query1 + query2) / 2
+            # 
+            keypoint_map1 = torch.matmul(query, feat1.transpose(1,2)).reshape(B, self.num_queries, h, w)      # [B, Q, e]*[B, e, hw] = [B, Q, h, w]
+            keypoint_map2 = torch.matmul(query, feat2.transpose(1,2)).reshape(B, self.num_queries, h, w)
 
             keypoint_map = torch.stack([keypoint_map1, keypoint_map2], dim=1)                 
             keypoint_map = torch.flatten(keypoint_map, 0, 1)                # [2B, Q, H, W]
-            
-            contra_losses.append(contra_loss)
+
             keypoint_maps.append(keypoint_map)
+        
+        contra_loss = self.loss_func(query1, query2)  
         # 
-        path_3 = self.refinenet3(keypoint_maps[2])
+        path_3 = self.refinenet3(keypoint_maps[3])
         path_2 = self.refinenet2(path_3, keypoint_maps[1])
         path_1 = self.refinenet1(path_2, keypoint_maps[0])
 
-        return [path_2, path_1], contra_losses
+        return [path_2, path_1], contra_loss
     
 if __name__ == '__main__' :
     x = torch.rand((4, 3, 256, 256))
     y = torch.rand((4, 16))
-    model = MultiScaleQueryTransformerDecoder()
-    print(model(x, y, 2)[0].shape)
+    model = MultiviewEncoder()
+    print(sum(p.numel() for p in model.parameters() if p.requires_grad))

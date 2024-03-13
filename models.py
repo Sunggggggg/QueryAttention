@@ -10,7 +10,7 @@ from utils import util
 import geometry
 from epipolar import project_rays
 from encoder import SpatialEncoder, ImageEncoder, UNetEncoder
-from transformer_decoder import MultiScaleQueryTransformerDecoder
+from transformer_encoder import MultiScaleQueryTransformerDecoder
 from resnet_block_fc import ResnetFC
 import timm
 
@@ -48,7 +48,6 @@ def encode_relative_point(ray, transform):
 
     ray = ray.view(*s)
     return ray
-
 
 class CrossAttentionRenderer(nn.Module):
     def __init__(self, no_sample=False, no_latent_concat=False, no_multiview=False, no_high_freq=False, model="query", uv=None, repeat_attention=True, n_view=1, npoints=64, num_hidden_units_phi=128):
