@@ -312,6 +312,7 @@ class MultiviewEncoder(nn.Module):
         B = x.shape[0]
         query = self.query_feat.weight.unsqueeze(0).repeat(B, 1, 1)
         query_embed = self.query_embed.weight.unsqueeze(0).repeat(B, 1, 1)  # [B, Q, e]
+        query1, query2 = query, query
 
         # Camera pose embedding
         pose_embed = self.cam_pose_embed(rel_transform)                     # [2B, hidden_dim]
@@ -334,8 +335,8 @@ class MultiviewEncoder(nn.Module):
             # 
             level_embed = self.level_embed.weight[level_index].unsqueeze(0).unsqueeze(0).repeat(B, h*w, 1)  # [B, hw, e]
            
-            query1 = self.query_activation1[i](query, feat1, cam_pos=pose_embed1+level_embed, query_pos=query_embed)
-            query2 = self.query_activation2[i](query, feat2, cam_pos=pose_embed2+level_embed, query_pos=query_embed)
+            query1 = self.query_activation1[i](query1, feat1, cam_pos=pose_embed1+level_embed, query_pos=query_embed)
+            query2 = self.query_activation2[i](query2, feat2, cam_pos=pose_embed2+level_embed, query_pos=query_embed)
             # 
             query1 = self.self_attention_layers1[i](query1, query_pos=query_embed)
             query2 = self.self_attention_layers2[i](query2, query_pos=query_embed)
@@ -350,10 +351,10 @@ class MultiviewEncoder(nn.Module):
             query1 = self.ffn_layers3[i](query1)
             query2 = self.ffn_layers4[i](query2)
             #
-            query = (query1 + query2) / 2
 
             contra_loss = self.loss_func(query1, query2)
 
+        query = (query1 + query2) / 2
         # Make pixel align
         for i in range(self.num_feat_levels) :
             feat1, feat2 = feats1[i], feats2[i]
