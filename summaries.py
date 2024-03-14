@@ -25,7 +25,6 @@ def img_summaries(model, model_input, ground_truth, loss_summaries, model_output
         ent = -(at_wt * torch.log(at_wt + 1e-5)).sum(dim=-1)
         ent = ent.mean()
         writer.add_scalar(prefix + "ent", ent, iter)
-        print(at_wt[0, 2065])
         print("entropy: ", ent)
 
     writer.add_image(prefix + "predictions",

@@ -351,6 +351,12 @@ class MultiviewEncoder(nn.Module):
             query2 = self.ffn_layers4[i](query2)
             #
             query = (query1 + query2) / 2
+
+            contra_loss = self.loss_func(query1, query2)
+
+        # Make pixel align
+        for i in range(self.num_feat_levels) :
+            feat1, feat2 = feats1[i], feats2[i]
             # 
             keypoint_map1 = torch.matmul(query, feat1.transpose(1,2)).reshape(B, self.num_queries, h, w)      # [B, Q, e]*[B, e, hw] = [B, Q, h, w]
             keypoint_map2 = torch.matmul(query, feat2.transpose(1,2)).reshape(B, self.num_queries, h, w)
@@ -360,8 +366,8 @@ class MultiviewEncoder(nn.Module):
 
             keypoint_maps.append(keypoint_map)
         
-        contra_loss = self.loss_func(query1, query2)  
         # 
+        assert self.num_feat_levels == 3    # Fix 3 scale
         path_3 = self.refinenet3(keypoint_maps[2])
         path_2 = self.refinenet2(path_3, keypoint_maps[1])
         path_1 = self.refinenet1(path_2, keypoint_maps[0])
