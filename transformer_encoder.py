@@ -357,6 +357,9 @@ class MultiviewEncoder(nn.Module):
         # Make pixel align
         for i in range(self.num_feat_levels) :
             feat1, feat2 = feats1[i], feats2[i]
+            feat1 = feat1.reshape(B, self.hidden_dim, -1).permute(0, 2, 1)   # [B, hw, e]
+            feat2 = feat2.reshape(B, self.hidden_dim, -1).permute(0, 2, 1)   # [B, hw, e]
+            B, _, h, w = feat1.shape 
             # 
             keypoint_map1 = torch.matmul(query, feat1.transpose(1,2)).reshape(B, self.num_queries, h, w)      # [B, Q, e]*[B, e, hw] = [B, Q, h, w]
             keypoint_map2 = torch.matmul(query, feat2.transpose(1,2)).reshape(B, self.num_queries, h, w)
