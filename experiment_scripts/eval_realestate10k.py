@@ -85,6 +85,9 @@ def multigpu_train(gpu, opt):
 
         model.load_state_dict(state_dict['model'], strict=False)
 
+        save_path_root = opt.checkpoint_path.split('/')[:-2]
+        save_path = os.path.join(*save_path_root, 'eval.txt')
+
     model = model.cuda().eval()
     device = "gpu"
 
@@ -170,8 +173,7 @@ def multigpu_train(gpu, opt):
 
             print("mse, psnr, lpip, ssim", np.mean(mses), np.mean(psnrs), np.mean(lpips_list), np.mean(ssims))
 
-        f = os.path.join(opt.logging_root, 'eval.txt')
-        with open(f, 'w') as file:
+        with open(save_path, 'w') as file:
             file.write('{} = {}\n'.format('MSE', np.mean(mses)))
             file.write('{} = {}\n'.format('PSNR', np.mean(psnrs)))
             file.write('{} = {}\n'.format('LPIPS', np.mean(lpips_list)))
