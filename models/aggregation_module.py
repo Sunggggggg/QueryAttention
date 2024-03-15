@@ -237,6 +237,7 @@ class FeatureExtractionHyperPixel(nn.Module):
         # Up-sample & concatenate features to construct a hyperimage
         for idx, feat in enumerate(feats):
             feats[idx] = F.interpolate(feat, self.feature_size, None, 'bilinear', True)
+            print(feats[idx].shape)
 
         return feats[:3][::-1]
 
@@ -305,16 +306,16 @@ class MultiviewEncoder(nn.Module):
         for level in range(self.num_feat_levels):
             # Feature map
             feat1, feat2 = feats1[level], feats2[level]     # [B, e, h, w]
-            print(feat1.shape)
+            # Key pos_embed
+            key_pos1 = self.pe_layer(feat1)
+            key_pos2 = self.pe_layer(feat2)
+
             feat1 = feat1.flatten(-2).permute(0, 2, 1)
             feat2 = feat2.flatten(-2).permute(0, 2, 1)
 
             # Query pos_embed
             query_pos1 = query_embed_x + self.query_embed_y1.unsqueeze(0).repeat(B, 1, 1)
             query_pos2 = query_embed_x + self.query_embed_y2.unsqueeze(0).repeat(B, 1, 1) # [B, Q, e]
-            # Key pos_embed
-            key_pos1 = self.pe_layer(feat1)
-            key_pos2 = self.pe_layer(feat2)
 
             for depth in range(self.num_depth):
                 # Query Activation
