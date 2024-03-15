@@ -310,10 +310,11 @@ class MultiviewEncoder(nn.Module):
             feat1, feat2 = feats1[level], feats2[level]     # [B, e, h, w]
             # Key pos_embed
             key_pos1 = self.pe_layer(feat1)
-            key_pos2 = self.pe_layer(feat2)
-            print(key_pos2.shape)
+            key_pos2 = self.pe_layer(feat2)                 # [B, e, hw]
+            key_pos1 = key_pos1.permute(0, 2, 1)
+            key_pos2 = key_pos2.permute(0, 2, 1)
 
-            feat1 = feat1.flatten(-2).permute(0, 2, 1)
+            feat1 = feat1.flatten(-2).permute(0, 2, 1)      # [B, e, hw] > [B, hw, e]
             feat2 = feat2.flatten(-2).permute(0, 2, 1)
 
             # Query pos_embed
