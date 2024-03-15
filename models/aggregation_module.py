@@ -175,8 +175,7 @@ class Attention(nn.Module):
         attn = attn.softmax(dim=-1)
         attn = self.attn_drop(attn)
 
-        print(attn.shape, value.shape)
-        x = (attn @ value).reshape(B, N, C) # [B, Q1, Q2] @ [B, Q2, e]  = 
+        x = attn @ value            # [B, Q1, Q2] @ [B, Q2, e]  = B 
         x = self.proj(x)
         x = _query + self.proj_drop(x)
         x = self.norm(x)
