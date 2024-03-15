@@ -174,9 +174,6 @@ class Attention(nn.Module):
         attn = self.attn_drop(attn)
 
         x = attn @ value            # [B, Q1, Q2] @ [B, Q2, e]  = [B, Q1, e]
-        print(x.shape, _query.shape)
-        x = _query + self.proj_drop(x)
-        x = self.norm(x)
         return x
 
 class FFNLayer(nn.Module):
@@ -314,6 +311,18 @@ class MultiviewEncoder(nn.Module):
         self.refinenet2 = FeatureFusionBlock_custom(num_queries, nn.ReLU(False), deconv=False, bn=False, expand=False, align_corners=True)
         self.refinenet3 = FeatureFusionBlock_custom(num_queries, nn.ReLU(False), deconv=False, bn=False, expand=False, align_corners=True)
 
+
+        self.norm1 = nn.LayerNorm(hidden_dim)
+        self.norm2 = nn.LayerNorm(hidden_dim)
+        self.norm3 = nn.LayerNorm(hidden_dim)
+        self.norm4 = nn.LayerNorm(hidden_dim)
+        self.norm5 = nn.LayerNorm(hidden_dim)
+        self.norm6 = nn.LayerNorm(hidden_dim)
+        self.norm7 = nn.LayerNorm(hidden_dim)
+        self.norm8 = nn.LayerNorm(hidden_dim)
+        self.norm9 = nn.LayerNorm(hidden_dim)
+        self.norm10 = nn.LayerNorm(hidden_dim)
+
     def forward(self, x, rel_transform, nviews=2):
         # 
         s = x.shape
@@ -347,11 +356,15 @@ class MultiviewEncoder(nn.Module):
 
             for depth in range(self.num_depth):
                 # Query Activation
-                query1 = self.query_activation1[depth](query1, query1, query1, query_pos=query_embed_x)
-                query2 = self.query_activation1[depth](query2, query2, query2, query_pos=query_embed_x)
+                query1 += self.query_activation1[depth](query1, query1, query1, query_pos=query_embed_x)
+                query2 += self.query_activation1[depth](query2, query2, query2, query_pos=query_embed_x)
+                query1 = self.norm1(query1)
+                query2 = self.norm2(query1)
 
-                query1 = self.query_activation2[depth](query1, feat1, feat1, query_pos=query_pos1, key_pos=key_pos1)
-                query2 = self.query_activation2[depth](query2, feat2, feat2, query_pos=query_pos2, key_pos=key_pos2)
+                query1 += self.query_activation2[depth](query1, feat1, feat1, query_pos=query_pos1, key_pos=key_pos1)
+                query2 += self.query_activation2[depth](query2, feat2, feat2, query_pos=query_pos2, key_pos=key_pos2)
+                query1 = self.norm3(query1)
+                query2 = self.norm4(query1)
                 cost_volume = query1 @ query2.permute(0, 2, 1)  # [B, Q1, Q2]
 
                 # Intra Aggreagation
@@ -359,14 +372,18 @@ class MultiviewEncoder(nn.Module):
                 cost_feat2 = torch.cat([cost_volume.permute(0, 2, 1), query2], dim=-1)   # [B, Q2, (Q1+e)]
 
                 _query1, _query2 = query1, query2
-                query1 = self.self_attention_layers_query[depth](cost_feat1, cost_feat1, query1)
-                query1 = self.ffn_layers1[depth](query1)
+                query1 += self.self_attention_layers_query[depth](cost_feat1, cost_feat1, query1)
+                query1 = self.norm5(query1)
+                query1 += self.ffn_layers1[depth](query1)
                 cost_volume1 = self.self_attention_layers_cost_vol[depth](cost_feat1, cost_feat1, cost_volume) # [B, Q1, Q2]
+                query1 = self.norm6(query1)
                 query1 += cost_volume1.softmax(1) @ _query2      # [B, Q1, Q2] [B, Q2, e]
 
                 query2 = self.self_attention_layers_query[depth](cost_feat2, cost_feat2, query2)   # [B, Q2, e]
+                query2 = self.norm7(query2)
                 query2 = self.ffn_layers1[depth](query2)
                 cost_volume2 = self.self_attention_layers_cost_vol[depth](cost_feat2, cost_feat2, cost_volume.permute(0, 2, 1)) # [B, Q2, Q1]
+                query2 = self.norm8(query2)
                 query2 += cost_volume2.softmax(1) @ _query1     # [B, Q2, Q1] [B, Q1, e]
                 
                 # Inter Aggregtion
@@ -375,9 +392,11 @@ class MultiviewEncoder(nn.Module):
 
                 _query1, _query2 = query1, query2
                 query1 = self.cross_attention_layers_query[depth](cost_feat1, cost_feat2, _query2)  # []
+                query1 = self.norm9(query1)
                 query1 = self.ffn_layers2[depth](query1)
 
                 query2 = self.cross_attention_layers_query[depth](cost_feat2, cost_feat1, _query1)   # [B, Q2, e]
+                query2 = self.norm10(query2)
                 query2 = self.ffn_layers2[depth](query2)
 
             queries1.append(query1)
