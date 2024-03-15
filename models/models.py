@@ -3,7 +3,7 @@ import torch
 import torch.nn as nn
 from copy import deepcopy
 
-import geometry
+import models.geometry as geometry
 from .epipolar import project_rays
 from .encoder import SpatialEncoder, ImageEncoder, UNetEncoder
 from .transformer_encoder import MultiviewEncoder
