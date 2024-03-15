@@ -281,6 +281,7 @@ class MultiviewEncoder(nn.Module):
         self.cross_attention_layers_query = nn.ModuleList()
         self.cross_attention_layers_cost_vol = nn.ModuleList()
 
+        print("nheads", nheads)
         for _ in range(num_depth) :
             self.query_activation1.append(SelfAttentionLayer(d_model=hidden_dim, nhead=nheads, dropout=0.0))
             self.query_activation2.append(CrossAttentionLayer(d_model=hidden_dim, nhead=nheads, dropout=0.0))
