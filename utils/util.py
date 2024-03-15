@@ -1,6 +1,6 @@
 import matplotlib.colors as colors
 import torch.nn.functional as F
-import geometry
+import models.geometry
 import os, struct, math
 import numpy as np
 import torch
