@@ -152,9 +152,12 @@ class Attention(nn.Module):
         query = self.with_pos_embed(query, query_pos)
         key = self.with_pos_embed(key, key_pos)
 
-        query = self.q_proj(query).view(B, -1, self.num_heads, C//self.num_heads) 
-        key = self.k_proj(key).view(B, -1, self.num_heads, C//self.num_heads)      
-        value = self.v_proj(value).view(B, -1, self.num_heads, C//self.num_heads)
+        # query = self.q_proj(query).view(B, -1, self.num_heads, C//self.num_heads) 
+        # key = self.k_proj(key).view(B, -1, self.num_heads, C//self.num_heads)      
+        # value = self.v_proj(value).view(B, -1, self.num_heads, C//self.num_heads)
+        query = self.q_proj(query)
+        key = self.k_proj(key)
+        value = self.v_proj(value)
 
         attn = (query @ key.transpose(-2, -1)) * self.scale # [B, Q, 1, e] @ [B, Q, e, 1] 
         attn = attn.softmax(dim=-1)
