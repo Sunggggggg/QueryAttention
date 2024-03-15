@@ -295,10 +295,18 @@ class MultiviewEncoder(nn.Module):
         for _ in range(num_depth) :
             self.query_activation1.append(Attention(d_model=hidden_dim, nhead=nheads, dropout=0.0))
             self.query_activation2.append(Attention(d_model=hidden_dim, nhead=nheads, dropout=0.0))
-            self.self_attention_layers_query.append(Attention(d_model=hidden_dim, nhead=nheads, dropout=0.0))
-            self.self_attention_layers_cost_vol.append(Attention(d_model=hidden_dim, nhead=nheads, dropout=0.0))
-            self.cross_attention_layers_query.append(Attention(d_model=hidden_dim, nhead=nheads, dropout=0.0))
-            self.cross_attention_layers_cost_vol.append(Attention(d_model=hidden_dim, nhead=nheads, dropout=0.0))
+            self.self_attention_layers_query.append(
+                Attention(d_model=hidden_dim, query_dim=hidden_dim+num_queries, key_dim=hidden_dim+num_queries, value_dim=hidden_dim, nhead=nheads, dropout=0.0)
+                )
+            self.self_attention_layers_cost_vol.append(
+                Attention(d_model=hidden_dim, query_dim=hidden_dim+num_queries, key_dim=hidden_dim+num_queries, value_dim=num_queries, nhead=nheads, dropout=0.0)
+                )
+            self.cross_attention_layers_query.append(
+                Attention(d_model=hidden_dim, query_dim=hidden_dim+num_queries, key_dim=hidden_dim+num_queries, value_dim=hidden_dim, nhead=nheads, dropout=0.0)
+                )
+            self.cross_attention_layers_cost_vol.append(
+                Attention(d_model=hidden_dim, query_dim=hidden_dim+num_queries, key_dim=hidden_dim+num_queries, value_dim=num_queries, nhead=nheads, dropout=0.0)
+                )
             self.ffn_layers1.append(FFNLayer(d_model=hidden_dim, dim_feedforward=dim_feedforward, dropout=0.0))
             self.ffn_layers2.append(FFNLayer(d_model=hidden_dim, dim_feedforward=dim_feedforward, dropout=0.0))
 
@@ -332,9 +340,9 @@ class MultiviewEncoder(nn.Module):
             key_pos1 = key_pos1.permute(0, 2, 1)            # [B, hw, e]
             key_pos2 = key_pos2.permute(0, 2, 1)
 
-            feat1 = feat1.flatten(-2).permute(0, 2, 1)      # [B, e, hw] > [B, hw, e]
-            feat2 = feat2.flatten(-2).permute(0, 2, 1)
-
+            feat1 = feat1.reshape(B, self.hidden_dim, -1).permute(0, 2, 1)   # [B, hw, e]
+            feat2 = feat2.reshape(B, self.hidden_dim, -1).permute(0, 2, 1)   # [B, hw, e]
+            
             # Query pos_embed
             query_pos1 = query_embed_x + self.query_embed_y1.unsqueeze(0).repeat(B, 1, 1)
             query_pos2 = query_embed_x + self.query_embed_y2.unsqueeze(0).repeat(B, 1, 1) # [B, Q, e]
