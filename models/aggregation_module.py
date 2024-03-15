@@ -132,17 +132,17 @@ class Attention(nn.Module):
         self.scale = head_dim ** -0.5
 
         if query_dim is not None :
-            self.q_proj = nn.Linear(query_dim, d_model, bias=False)
+            self.q_proj = nn.Linear(query_dim, query_dim, bias=False)
         else :
             self.q_proj = nn.Linear(d_model, d_model, bias=False)
 
         if key_dim is not None :
-            self.k_proj = nn.Linear(key_dim, d_model, bias=False)
+            self.k_proj = nn.Linear(key_dim, key_dim, bias=False)
         else :
             self.k_proj = nn.Linear(d_model, d_model, bias=False)
 
         if value_dim is not None :
-            self.v_proj = nn.Linear(value_dim, d_model, bias=False)
+            self.v_proj = nn.Linear(value_dim, value_dim, bias=False)
         else :
             self.v_proj = nn.Linear(d_model, d_model, bias=False)
 
@@ -376,7 +376,6 @@ class MultiviewEncoder(nn.Module):
                 query1 += self.self_attention_layers_query[depth](cost_feat1, cost_feat1, query1)
                 query1 = self.norm5(query1)
                 query1 += self.ffn_layers1[depth](query1)
-                print(cost_feat1.shape)
                 cost_volume1 = self.self_attention_layers_cost_vol[depth](cost_feat1, cost_feat1, cost_volume) # [B, Q1, Q2]
                 query1 = self.norm6(query1)
                 query1 += cost_volume1.softmax(dim=1) @ _query2      # [B, Q1, Q2] [B, Q2, e]
