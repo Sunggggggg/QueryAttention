@@ -174,6 +174,7 @@ class Attention(nn.Module):
         attn = self.attn_drop(attn)
 
         x = attn @ value            # [B, Q1, Q2] @ [B, Q2, e]  = [B, Q1, e]
+        print(x.shape, _query.shape)
         x = _query + self.proj_drop(x)
         x = self.norm(x)
         return x
