@@ -1,6 +1,5 @@
 import torch
 import torch.nn as nn
-from backbone import Backbone
 from torch.nn import functional as F
 import math
 #from loss_functions import ContrastiveLoss

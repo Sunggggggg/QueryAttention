@@ -223,7 +223,7 @@ class MultiviewEncoder(nn.Module):
     
             # 
             keypoint_map1 = torch.matmul(query1, feat1.transpose(1,2)).reshape(B, self.num_queries, h, w)      # [B, Q, e]*[B, e, hw] = [B, Q, h, w]
-            keypoint_map2 = torch.matmul(query2, feat2.transpose(1,2)).reshape(B, self.num_queries, h, w)
+            keypoint_map2 = torch.matmul(queries2[i], feat2.transpose(1,2)).reshape(B, self.num_queries, h, w)
 
             keypoint_map = torch.stack([keypoint_map1, keypoint_map2], dim=1)                 
             keypoint_map = torch.flatten(keypoint_map, 0, 1)                # [2B, Q, H, W]
