@@ -147,7 +147,6 @@ class Attention(nn.Module):
             self.v_proj = nn.Linear(d_model, d_model, bias=False)
 
         self.attn_drop = nn.Dropout(dropout)
-        self.proj = nn.Linear(d_model, d_model)
         self.proj_drop = nn.Dropout(dropout)
         self.norm = nn.LayerNorm(d_model)
 
@@ -158,7 +157,6 @@ class Attention(nn.Module):
         """
         query, key, value : [B, Q, e]
         """
-        B, N, C = query.shape
         _query = query
 
         query = self.with_pos_embed(query, query_pos)
@@ -175,8 +173,7 @@ class Attention(nn.Module):
         attn = attn.softmax(dim=-1)
         attn = self.attn_drop(attn)
 
-        x = attn @ value            # [B, Q1, Q2] @ [B, Q2, e]  = B 
-        x = self.proj(x)
+        x = attn @ value            # [B, Q1, Q2] @ [B, Q2, e]  = [B, Q1, e]
         x = _query + self.proj_drop(x)
         x = self.norm(x)
         return x
