@@ -9,7 +9,7 @@ import torch
 from utils import util
 import torchvision
 
-import geometry
+import models.geometry
 
 
 def img_summaries(model, model_input, ground_truth, loss_summaries, model_output, writer, iter, prefix="", img_shape=(98, 144), n_view=1):
