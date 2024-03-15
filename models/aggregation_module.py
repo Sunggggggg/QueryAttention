@@ -6,6 +6,7 @@ import models.resnet as resnet
 from operator import add
 from functools import reduce
 from loss_functions import ContrastiveLoss
+from .backbone import Backbone
 
 class ResidualConvUnit_custom(nn.Module):
     def __init__(self, features, activation, bn):
@@ -199,8 +200,9 @@ class FeatureExtractionHyperPixel(nn.Module):
         self.hyperpixel_ids = hyperpixel_ids
     
     def forward(self, img):
-        r"""Extract desired a list of intermediate features"""
-
+        """
+        [B, ]
+        """
         feats = []
 
         # Layer 0
@@ -250,8 +252,8 @@ class MultiviewEncoder(nn.Module):
         self.num_depth = num_depth
 
         # Backbone
-        #self.backbone = Backbone(name=name, pretrained=True, freeze=True, num_feat_levels=num_feat_levels, hidden_dim=hidden_dim)
-        self.backbone = FeatureExtractionHyperPixel([0,8,20,21,26,28,29,30], hidden_dim, True)
+        self.backbone = Backbone(name=name, pretrained=True, freeze=True, num_feat_levels=num_feat_levels, hidden_dim=hidden_dim)
+        #self.backbone = FeatureExtractionHyperPixel([0,8,20,21,26,28,29,30], hidden_dim, True)
         self.pe_layer = PositionEmbeddingSine(hidden_dim // 2, normalize=True)
 
         # Learnable query
