@@ -94,6 +94,92 @@ def unnormalize_intrinsics(intrinsics, h, w):
     intrinsics[1] *= h
     return intrinsics
 
+def get_camera_pose(scene_path, all_pose_dir, uv, views=1):
+    npz_files = sorted(scene_path.glob("*.npz"))
+    npz_file = npz_files[0]
+    data = np.load(npz_file)
+    all_pose_dir = Path(all_pose_dir)
+
+    rgb_files = list(data.keys())
+
+    timestamps = [int(rgb_file.split('.')[0]) for rgb_file in rgb_files]
+    sorted_ids = np.argsort(timestamps)
+
+    rgb_files = np.array(rgb_files)[sorted_ids]
+    timestamps = np.array(timestamps)[sorted_ids]
+
+    camera_file = all_pose_dir / (str(scene_path.name) + '.txt')
+    cam_params = parse_pose_file(camera_file)
+    # H, W, _ = data[rgb_files[0]].shape
+
+    # Weird cropping of images
+    H, W = 256, 456
+
+    xscale = W / min(H, W)
+    yscale = H / min(H, W)
+
+
+    query = {}
+    context = {}
+
+    render_frame = min(128, rgb_files.shape[0])
+
+    query_intrinsics = []
+    query_c2w = []
+    query_rgbs = []
+    for i in range(1, render_frame):
+        rgb = data[rgb_files[i]]
+        timestep = timestamps[i]
+
+        # rgb = cv2.resize(rgb, (W, H))
+        intrinsics = unnormalize_intrinsics(cam_params[timestep].intrinsics, H, W)
+
+        intrinsics[0, 2] = intrinsics[0, 2] / xscale
+        intrinsics[1, 2] = intrinsics[1, 2] / yscale
+        rgb = rgb.astype(np.float32) / 127.5 - 1
+
+        query_intrinsics.append(intrinsics)
+        query_c2w.append(cam_params[timestep].c2w_mat)
+        query_rgbs.append(rgb)
+
+    context_intrinsics = []
+    context_c2w = []
+    context_rgbs = []
+
+    if views == 1:
+        render_ids = [0]
+    elif views == 2:
+        render_ids = [0, min(len(rgb_files) - 1, 128)]
+    elif views == 3:
+        render_ids = [0, min(len(rgb_files) - 1, 128) // 2, min(len(rgb_files) - 1, 128)]
+    else:
+        assert False
+
+    for i in render_ids:
+        rgb = data[rgb_files[i]]
+        timestep = timestamps[i]
+        # print("render: ", i)
+        # rgb = cv2.resize(rgb, (W, H))
+        intrinsics = unnormalize_intrinsics(cam_params[timestep].intrinsics, H, W)
+        intrinsics[0, 2] = intrinsics[0, 2] / xscale
+        intrinsics[1, 2] = intrinsics[1, 2] / yscale
+
+        rgb = rgb.astype(np.float32) / 127.5 - 1
+
+        context_intrinsics.append(intrinsics)
+        context_c2w.append(cam_params[timestep].c2w_mat)
+        context_rgbs.append(rgb)
+
+    query = {'rgb': torch.Tensor(query_rgbs)[None].float(),
+             'cam2world': torch.Tensor(query_c2w)[None].float(),
+             'intrinsics': torch.Tensor(query_intrinsics)[None].float(),
+             'uv': uv.view(-1, 2)[None, None].expand(1, render_frame - 1, -1, -1)}
+    ctxt = {'rgb': torch.Tensor(context_rgbs)[None].float(),
+            'cam2world': torch.Tensor(context_c2w)[None].float(),
+            'intrinsics': torch.Tensor(context_intrinsics)[None].float()}
+
+    return {'query': query, 'context': ctxt}
+
 class RealEstate10k():
     def __init__(self, img_root, pose_root,
                  num_ctxt_views, num_query_views, query_sparsity=None,
