@@ -7,6 +7,7 @@ from operator import add
 from functools import reduce
 from loss_functions import ContrastiveLoss
 from .backbone import Backbone
+from .attention import *
 
 class ResidualConvUnit_custom(nn.Module):
     def __init__(self, features, activation, bn):
@@ -281,12 +282,12 @@ class MultiviewEncoder(nn.Module):
         self.cross_attention_layers_cost_vol = nn.ModuleList()
 
         for _ in range(num_depth) :
-            self.query_activation1.append(Attention(d_model=hidden_dim, nhead=nheads, dropout=0.0))
-            self.query_activation2.append(Attention(d_model=hidden_dim, nhead=nheads, dropout=0.0))
-            self.self_attention_layers_query.append(Attention(d_model=hidden_dim, nhead=nheads, dropout=0.0))
-            self.self_attention_layers_cost_vol.append(Attention(d_model=hidden_dim, nhead=nheads, dropout=0.0))
-            self.cross_attention_layers_query.append(Attention(d_model=hidden_dim, nhead=nheads, dropout=0.0))
-            self.cross_attention_layers_cost_vol.append(Attention(d_model=hidden_dim, nhead=nheads, dropout=0.0))
+            self.query_activation1.append(SelfAttentionLayer(d_model=hidden_dim, nhead=nheads, dropout=0.0))
+            self.query_activation2.append(CrossAttentionLayer(d_model=hidden_dim, nhead=nheads, dropout=0.0))
+            self.self_attention_layers_query.append(SelfAttentionLayer(d_model=hidden_dim, nhead=nheads, dropout=0.0))
+            self.self_attention_layers_cost_vol.append(SelfAttentionLayer(d_model=hidden_dim, nhead=nheads, dropout=0.0))
+            self.cross_attention_layers_query.append(CrossAttentionLayer(d_model=hidden_dim, nhead=nheads, dropout=0.0))
+            self.cross_attention_layers_cost_vol.append(CrossAttentionLayer(d_model=hidden_dim, nhead=nheads, dropout=0.0))
             self.ffn_layers1.append(FFNLayer(d_model=hidden_dim, dim_feedforward=dim_feedforward, dropout=0.0))
             self.ffn_layers2.append(FFNLayer(d_model=hidden_dim, dim_feedforward=dim_feedforward, dropout=0.0))
 
