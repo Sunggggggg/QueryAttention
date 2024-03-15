@@ -311,6 +311,7 @@ class MultiviewEncoder(nn.Module):
             # Key pos_embed
             key_pos1 = self.pe_layer(feat1)
             key_pos2 = self.pe_layer(feat2)
+            print(key_pos2.shape)
 
             feat1 = feat1.flatten(-2).permute(0, 2, 1)
             feat2 = feat2.flatten(-2).permute(0, 2, 1)
