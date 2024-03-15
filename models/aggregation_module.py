@@ -143,6 +143,9 @@ class Attention(nn.Module):
         return tensor if pos is None else tensor + pos
 
     def forward(self, query, key, value, query_pos=None, key_pos=None):
+        """
+        query, key, value : [B, Q, e]
+        """
         B, N, C = query.shape
         _query = query
 
@@ -153,7 +156,7 @@ class Attention(nn.Module):
         key = self.k_proj(key).view(B, -1, self.num_heads, C//self.num_heads)      
         value = self.v_proj(value).view(B, -1, self.num_heads, C//self.num_heads)
 
-        attn = (query @ key.transpose(-2, -1)) * self.scale
+        attn = (query @ key.transpose(-2, -1)) * self.scale # [B, Q, 1, e] @ [B, Q, e, 1] 
         attn = attn.softmax(dim=-1)
         attn = self.attn_drop(attn)
 
@@ -311,7 +314,7 @@ class MultiviewEncoder(nn.Module):
             # Key pos_embed
             key_pos1 = self.pe_layer(feat1)
             key_pos2 = self.pe_layer(feat2)                 # [B, e, hw]
-            key_pos1 = key_pos1.permute(0, 2, 1)
+            key_pos1 = key_pos1.permute(0, 2, 1)            # [B, hw, e]
             key_pos2 = key_pos2.permute(0, 2, 1)
 
             feat1 = feat1.flatten(-2).permute(0, 2, 1)      # [B, e, hw] > [B, hw, e]

@@ -56,7 +56,7 @@ class CrossAttentionRenderer(nn.Module):
                  num_feat_levels=3,
                  num_queries=32,
                  hidden_dim=256,
-                 nheads=1,
+                 nheads=4,
                  depth=12
                  ):
         super().__init__()
