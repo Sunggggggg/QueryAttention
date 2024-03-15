@@ -2,6 +2,9 @@ import torch
 import torch.nn as nn
 from torch.nn import functional as F
 import math
+import models.resnet as resnet
+from operator import add
+from functools import reduce
 #from loss_functions import ContrastiveLoss
 
 class ResidualConvUnit_custom(nn.Module):
@@ -181,10 +184,6 @@ class FFNLayer(nn.Module):
         queries = queries + self.dropout(queries2)
         queries = self.norm(queries)
         return queries
-
-import models.resnet as resnet
-from operator import add
-from functools import reduce
 
 class FeatureExtractionHyperPixel(nn.Module):
     def __init__(self, hyperpixel_ids, feature_size, freeze=True):
