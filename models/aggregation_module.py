@@ -7,7 +7,6 @@ from operator import add
 from functools import reduce
 from loss_functions import ContrastiveLoss
 from .backbone import Backbone
-from .attention import *
 
 class ResidualConvUnit_custom(nn.Module):
     def __init__(self, features, activation, bn):
@@ -126,15 +125,27 @@ class Attention(nn.Module):
     """
     Full Attention : No Multi head
     """
-    def __init__(self, d_model, nhead=1, dropout=0.0, activation="relu"):
+    def __init__(self, d_model, query_dim=None, key_dim=None, value_dim = None, nhead=1, dropout=0.0, activation="relu"):
         super(Attention, self).__init__()
         self.num_heads = nhead
         head_dim = d_model // nhead
         self.scale = head_dim ** -0.5
 
-        self.q_proj = nn.Linear(d_model, d_model, bias=False)
-        self.k_proj = nn.Linear(d_model, d_model, bias=False)
-        self.v_proj = nn.Linear(d_model, d_model, bias=False)
+        if query_dim is None :
+            self.q_proj = nn.Linear(query_dim, d_model, bias=False)
+        else :
+            self.q_proj = nn.Linear(d_model, d_model, bias=False)
+
+        if key_dim is None :
+            self.k_proj = nn.Linear(key_dim, d_model, bias=False)
+        else :
+            self.k_proj = nn.Linear(d_model, d_model, bias=False)
+
+        if value_dim is None :
+            self.v_proj = nn.Linear(value_dim, d_model, bias=False)
+        else :
+            self.v_proj = nn.Linear(d_model, d_model, bias=False)
+            
         self.attn_drop = nn.Dropout(dropout)
         self.proj = nn.Linear(d_model, d_model)
         self.proj_drop = nn.Dropout(dropout)
@@ -281,14 +292,13 @@ class MultiviewEncoder(nn.Module):
         self.cross_attention_layers_query = nn.ModuleList()
         self.cross_attention_layers_cost_vol = nn.ModuleList()
 
-        print("nheads", nheads)
         for _ in range(num_depth) :
-            self.query_activation1.append(SelfAttentionLayer(d_model=hidden_dim, nhead=nheads, dropout=0.0))
-            self.query_activation2.append(CrossAttentionLayer(d_model=hidden_dim, nhead=nheads, dropout=0.0))
-            self.self_attention_layers_query.append(SelfAttentionLayer(d_model=hidden_dim, nhead=nheads, dropout=0.0))
-            self.self_attention_layers_cost_vol.append(SelfAttentionLayer(d_model=hidden_dim, nhead=nheads, dropout=0.0))
-            self.cross_attention_layers_query.append(CrossAttentionLayer(d_model=hidden_dim, nhead=nheads, dropout=0.0))
-            self.cross_attention_layers_cost_vol.append(CrossAttentionLayer(d_model=hidden_dim, nhead=nheads, dropout=0.0))
+            self.query_activation1.append(Attention(d_model=hidden_dim, nhead=nheads, dropout=0.0))
+            self.query_activation2.append(Attention(d_model=hidden_dim, nhead=nheads, dropout=0.0))
+            self.self_attention_layers_query.append(Attention(d_model=hidden_dim, nhead=nheads, dropout=0.0))
+            self.self_attention_layers_cost_vol.append(Attention(d_model=hidden_dim, nhead=nheads, dropout=0.0))
+            self.cross_attention_layers_query.append(Attention(d_model=hidden_dim, nhead=nheads, dropout=0.0))
+            self.cross_attention_layers_cost_vol.append(Attention(d_model=hidden_dim, nhead=nheads, dropout=0.0))
             self.ffn_layers1.append(FFNLayer(d_model=hidden_dim, dim_feedforward=dim_feedforward, dropout=0.0))
             self.ffn_layers2.append(FFNLayer(d_model=hidden_dim, dim_feedforward=dim_feedforward, dropout=0.0))
 
