@@ -377,14 +377,15 @@ class MultiviewEncoder(nn.Module):
                 query1 += self.ffn_layers1[depth](query1)
                 cost_volume1 = self.self_attention_layers_cost_vol[depth](cost_feat1, cost_feat1, cost_volume) # [B, Q1, Q2]
                 query1 = self.norm6(query1)
-                query1 += cost_volume1.softmax(1) @ _query2      # [B, Q1, Q2] [B, Q2, e]
+                print(cost_volume1.shape, _query2.shape)
+                query1 += cost_volume1.softmax(dim=1) @ _query2      # [B, Q1, Q2] [B, Q2, e]
 
                 query2 = self.self_attention_layers_query[depth](cost_feat2, cost_feat2, query2)   # [B, Q2, e]
                 query2 = self.norm7(query2)
                 query2 = self.ffn_layers1[depth](query2)
                 cost_volume2 = self.self_attention_layers_cost_vol[depth](cost_feat2, cost_feat2, cost_volume.permute(0, 2, 1)) # [B, Q2, Q1]
                 query2 = self.norm8(query2)
-                query2 += cost_volume2.softmax(1) @ _query1     # [B, Q2, Q1] [B, Q1, e]
+                query2 += cost_volume2.softmax(dim=1) @ _query1     # [B, Q2, Q1] [B, Q1, e]
                 
                 # Inter Aggregtion
                 cost_feat1 = torch.cat([cost_volume, query1], dim=-1)                    # [B, Q1, (Q2+e)]
