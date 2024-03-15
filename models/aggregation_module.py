@@ -171,11 +171,11 @@ class Attention(nn.Module):
         key = self.k_proj(key)
         value = self.v_proj(value)
 
-        attn = (query @ key.transpose(-2, -1)) * self.scale # [B, Q, 1, e] @ [B, Q, e, 1] 
+        attn = (query @ key.transpose(-2, -1)) * self.scale # [B, Q1, e] @ [B, e, Q2] 
         attn = attn.softmax(dim=-1)
         attn = self.attn_drop(attn)
 
-        x = (attn @ value).transpose(1, 2).reshape(B, N, C)
+        x = (attn @ value).reshape(B, N, C) # [B, Q1, Q2] @ [B, Q2, e]  = 
         x = self.proj(x)
         x = _query + self.proj_drop(x)
         x = self.norm(x)
