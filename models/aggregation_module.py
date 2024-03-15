@@ -169,7 +169,7 @@ class Attention(nn.Module):
         key = self.k_proj(key)
         value = self.v_proj(value)
 
-        attn = (query @ key.transpose(-2, -1)) * self.scale # [B, Q1, e] @ [B, e, Q2] 
+        attn = (query @ key.transpose(-2, -1)) * self.scale # [B, Q1, e] @ [B, e, Q1] 
         attn = attn.softmax(dim=-1)
         attn = self.attn_drop(attn)
 
@@ -366,6 +366,7 @@ class MultiviewEncoder(nn.Module):
                 query1 = self.norm3(query1)
                 query2 = self.norm4(query1)
                 cost_volume = query1 @ query2.permute(0, 2, 1)  # [B, Q1, Q2]
+                print(cost_volume.shape)
 
                 # Intra Aggreagation
                 cost_feat1 = torch.cat([cost_volume, query1], dim=-1)                    # [B, Q1, (Q2+e)]
@@ -375,9 +376,9 @@ class MultiviewEncoder(nn.Module):
                 query1 += self.self_attention_layers_query[depth](cost_feat1, cost_feat1, query1)
                 query1 = self.norm5(query1)
                 query1 += self.ffn_layers1[depth](query1)
+                print(cost_feat1.shape)
                 cost_volume1 = self.self_attention_layers_cost_vol[depth](cost_feat1, cost_feat1, cost_volume) # [B, Q1, Q2]
                 query1 = self.norm6(query1)
-                print(cost_volume1.shape, _query2.shape)
                 query1 += cost_volume1.softmax(dim=1) @ _query2      # [B, Q1, Q2] [B, Q2, e]
 
                 query2 = self.self_attention_layers_query[depth](cost_feat2, cost_feat2, query2)   # [B, Q2, e]
