@@ -16,7 +16,6 @@ import loss_functions
 import summaries
 import config
 
-
 def sync_model(model):
     for param in model.parameters():
         dist.broadcast(param.data, 0)

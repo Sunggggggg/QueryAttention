@@ -188,8 +188,8 @@ class MultiviewEncoder(nn.Module):
             # 
             level_embed = self.level_embed.weight[level_index].unsqueeze(0).unsqueeze(0).repeat(B, h*w, 1)  # [B, hw, e]
            
-            query1 = self.query_activation1[i](query1, feat1, cam_pos=pose_embed1+level_embed, query_pos=query_embed)
-            query2 = self.query_activation2[i](query2, feat2, cam_pos=pose_embed2+level_embed, query_pos=query_embed)
+            query1 = self.query_activation1[i](query1, feat1, key_pos=pose_embed1+level_embed, query_pos=query_embed)
+            query2 = self.query_activation2[i](query2, feat2, key_pos=pose_embed2+level_embed, query_pos=query_embed)
             # 
             query1 = self.self_attention_layers1[i](query1, query_pos=query_embed)
             query2 = self.self_attention_layers2[i](query2, query_pos=query_embed)
@@ -198,8 +198,8 @@ class MultiviewEncoder(nn.Module):
             query2 = self.ffn_layers2[i](query2)
             #
             _query1, _query2 = query1, query2
-            query1 = self.cross_attention_layers1[i](query1, _query2, cam_pos=query_embed, query_pos=query_embed)
-            query2 = self.cross_attention_layers2[i](query2, _query1, cam_pos=query_embed, query_pos=query_embed)
+            query1 = self.cross_attention_layers1[i](query1, _query2, key_pos=query_embed, query_pos=query_embed)
+            query2 = self.cross_attention_layers2[i](query2, _query1, key_pos=query_embed, query_pos=query_embed)
 
             query1 = self.ffn_layers3[i](query1)
             query2 = self.ffn_layers4[i](query2)

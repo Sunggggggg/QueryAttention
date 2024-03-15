@@ -121,8 +121,6 @@ class SelfAttention(nn.Module):
         x = self.proj_drop(x)
         return x
 
-
-
 class FFNLayer(nn.Module):
     def __init__(self, d_model, dim_feedforward=2048, dropout=0.0, activation="gelu"):
         super().__init__()
