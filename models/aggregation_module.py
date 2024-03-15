@@ -184,7 +184,7 @@ class FFNLayer(nn.Module):
 
 import models.resnet as resnet
 from operator import add
-from functools import reduce, partial
+from functools import reduce
 
 class FeatureExtractionHyperPixel(nn.Module):
     def __init__(self, hyperpixel_ids, feature_size, freeze=True):
