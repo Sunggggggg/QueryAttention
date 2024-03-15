@@ -73,7 +73,7 @@ class FeatureFusionBlock_custom(nn.Module):
 
 class PositionEmbeddingSine(nn.Module):
     def __init__(self, num_pos_feats=256, temperature=10000, normalize=False, scale=None):
-        super().__init__()
+        super(PositionEmbeddingSine, self).__init__()
         self.num_pos_feats = num_pos_feats
         self.temperature = temperature
         self.normalize = normalize
@@ -122,7 +122,7 @@ class Attention(nn.Module):
     Full Attention : No Multi head
     """
     def __init__(self, d_model, nhead=1, dropout=0.0, activation="relu"):
-        super().__init__()
+        super(Attention, self).__init__()
         self.num_heads = nhead
         head_dim = d_model // nhead
         self.scale = head_dim ** -0.5
@@ -161,7 +161,7 @@ class Attention(nn.Module):
 
 class FFNLayer(nn.Module):
     def __init__(self, d_model, dim_feedforward=2048, dropout=0.0, activation="gelu"):
-        super().__init__()
+        super(FFNLayer, self).__init__()
         self.linear1 = nn.Linear(d_model, dim_feedforward)
         self.dropout = nn.Dropout(dropout)
         self.linear2 = nn.Linear(dim_feedforward, d_model)
@@ -188,7 +188,7 @@ from functools import reduce
 
 class FeatureExtractionHyperPixel(nn.Module):
     def __init__(self, hyperpixel_ids, feature_size, freeze=True):
-        super().__init__()
+        super(FeatureExtractionHyperPixel, self).__init__()
         self.backbone = resnet.resnet101(pretrained=True)
         self.feature_size = feature_size
         if freeze:
