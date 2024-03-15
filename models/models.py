@@ -1,21 +1,14 @@
 import torch.nn.functional as F
-import time
 import torch
 import torch.nn as nn
-import numpy as np
-#from midas import dpt_depth, midas_net, midas_net_custom
-
-from utils import util
-
-import geometry
-from epipolar import project_rays
-from encoder import SpatialEncoder, ImageEncoder, UNetEncoder
-from transformer_encoder import MultiviewEncoder
-from resnet_block_fc import ResnetFC
-import timm
-
 from copy import deepcopy
 
+import geometry
+from .epipolar import project_rays
+from .encoder import SpatialEncoder, ImageEncoder, UNetEncoder
+from .transformer_encoder import MultiviewEncoder
+from .resnet_block_fc import ResnetFC
+from utils import util
 
 def encode_relative_ray(ray, transform):
     s = ray.size()
@@ -26,7 +19,6 @@ def encode_relative_ray(ray, transform):
 
     ray = ray.view(*s)
     return ray
-
 
 def encode_relative_point(ray, transform):
     """
@@ -63,7 +55,7 @@ class CrossAttentionRenderer(nn.Module):
                  num_feat_levels=3,
                  num_queries=32,
                  hidden_dim=256,
-                 nheads=8,
+                 nheads=4,
                  depth=3*3
                  ):
         super().__init__()

@@ -209,7 +209,7 @@ def train(model, dataloaders, epochs, lr, epochs_til_checkpoint, model_dir, loss
                             if model_name == 'query':
                                 high_feat = z[1]  
                                 mask_high_feat = torch.stack([_high_feat/_high_feat.max() for _high_feat in high_feat], 0)
-                                mask_high_feat = torch.where(mask_high_feat >= 0.8, mask_high_feat, torch.Tensor([0.0]).type(torch.float32).to(mask_high_feat.device))
+                                #mask_high_feat = torch.where(mask_high_feat >= 0.8, mask_high_feat, torch.Tensor([0.0]).type(torch.float32).to(mask_high_feat.device))
                                 context_images = util.flatten_first_two(model_input['context']['rgb'])# [2B, H, W, 3]
                             
                                 for k in range(mask_high_feat.shape[1]) :

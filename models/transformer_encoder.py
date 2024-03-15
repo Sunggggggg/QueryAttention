@@ -3,16 +3,8 @@ import torchvision
 import torch.nn as nn
 from torch.nn import functional as F
 from loss_functions import ContrastiveLoss
-
-def _get_activation_fn(activation):
-    """Return an activation function given a string"""
-    if activation == "relu":
-        return F.relu
-    if activation == "gelu":
-        return F.gelu
-    if activation == "glu":
-        return F.glu
-    raise RuntimeError(F"activation should be relu/gelu, not {activation}.")
+from .backbone import Backbone
+from .attention import *
 
 def QueryAggregation(queries1, queries2):
     """
@@ -94,144 +86,6 @@ class FeatureFusionBlock_custom(nn.Module):
 
         return output
 
-class Backbone(nn.Module):
-    def __init__(self, name='resnet50', pretrained=True, freeze=True, num_feat_levels=4, hidden_dim=256) :
-        super(Backbone, self).__init__()
-        self.name = name
-        self.num_feat_levels = num_feat_levels
-        # 
-        if name == 'resnet50' and pretrained:
-            #weights = torchvision.models.ResNet50_Weights
-            backbone = torchvision.models.resnet50(pretrained=pretrained)
-            feat_dim = [2**8, 2**9, 2**10]
-        
-        elif name == 'swin_b' and pretrained :
-            weights = torchvision.models.Swin_B_Weights
-            backbone = torchvision.models.swin_b(weights=weights)
-            feat_dim = [2**7, 2**8, 2**9]
-        
-        if freeze :
-            for name, param in backbone.named_parameters():
-                param.requires_grad_(False)
-
-        self.backbone = backbone
-
-        # Same feature dim
-        self.branch = nn.Module()
-        self.branch.layer1 = nn.Conv2d(feat_dim[0], hidden_dim, kernel_size=3, stride=1, padding=1, bias=False, groups=1)
-        self.branch.layer2 = nn.Conv2d(feat_dim[1], hidden_dim, kernel_size=3, stride=1, padding=1, bias=False, groups=1)
-        self.branch.layer3 = nn.Conv2d(feat_dim[2], hidden_dim, kernel_size=3, stride=1, padding=1, bias=False, groups=1)
-
-    def forward(self, x):
-        if self.name == 'resnet50':
-            #
-            x = self.backbone.conv1(x)
-            x = self.backbone.bn1(x)
-            x = self.backbone.relu(x)
-
-            # 
-            layer1 = self.backbone.layer1(x)        # 256
-            layer2 = self.backbone.layer2(layer1)   # 512
-            layer3 = self.backbone.layer3(layer2)   # 1024
-
-        elif self.name == 'swin_b' :
-            layer1 = self.backbone.features[0](x)
-            layer1 = self.backbone.features[1](layer1)  # 128
-
-            layer2 = self.backbone.features[2](layer1)
-            layer2 = self.backbone.features[3](layer2)  # 256
-
-            layer3 = self.backbone.features[4](layer2)
-            layer3 = self.backbone.features[5](layer3)  # 512
-
-            layer1 = layer1.permute(0, 3, 1, 2)
-            layer2 = layer2.permute(0, 3, 1, 2)
-            layer3 = layer3.permute(0, 3, 1, 2)
-
-        layer1 = self.branch.layer1(layer1)   # hidden_dim
-        layer2 = self.branch.layer2(layer2)   # hidden_dim
-        layer3 = self.branch.layer3(layer3)   # hidden_dim
-        
-        return [layer3, layer2, layer1][::-1]
-
-class SelfAttentionLayer(nn.Module):
-    def __init__(self, d_model, nhead, dropout=0.0, activation="relu"):
-        super().__init__()
-        self.self_attn = nn.MultiheadAttention(d_model, nhead, dropout=dropout, batch_first=True)
-
-        self.norm = nn.LayerNorm(d_model)
-        self.dropout = nn.Dropout(dropout)
-
-        self.activation = _get_activation_fn(activation)
-        self._reset_parameters()
-    
-    def _reset_parameters(self):
-        for p in self.parameters():
-            if p.dim() > 1:
-                nn.init.xavier_uniform_(p)
-
-    def with_pos_embed(self, tensor, pos=None):
-        return tensor if pos is None else tensor + pos
-        
-    def forward(self, queries, query_pos=None) :
-        q = k = self.with_pos_embed(queries, query_pos)
-        queries2 = self.self_attn(q, k, value=queries)[0]
-        queries = queries + self.dropout(queries2)
-        queries = self.norm(queries)
-
-        return queries
-
-class CrossAttentionLayer(nn.Module):
-    def __init__(self, d_model, nhead, dropout=0.0, activation="relu"):
-        super().__init__()
-        self.multihead_attn = nn.MultiheadAttention(d_model, nhead, dropout=dropout, batch_first=True)
-
-        self.norm = nn.LayerNorm(d_model)
-        self.dropout = nn.Dropout(dropout)
-
-        self.activation = _get_activation_fn(activation)
-        self._reset_parameters()
-    
-    def _reset_parameters(self):
-        for p in self.parameters():
-            if p.dim() > 1:
-                nn.init.xavier_uniform_(p)
-
-    def with_pos_embed(self, tensor, pos=None):
-        return tensor if pos is None else tensor + pos
-
-    def forward(self, queries, feat, cam_pos=None, query_pos=None):
-        queries2 = self.multihead_attn(query=self.with_pos_embed(queries, query_pos),
-                                   key=self.with_pos_embed(feat, cam_pos),
-                                   value=feat)[0]
-        queries = queries + self.dropout(queries2)
-        queries = self.norm(queries)
-        
-        return queries
-
-class FFNLayer(nn.Module):
-    def __init__(self, d_model, dim_feedforward=2048, dropout=0.0, activation="gelu"):
-        super().__init__()
-        self.linear1 = nn.Linear(d_model, dim_feedforward)
-        self.dropout = nn.Dropout(dropout)
-        self.linear2 = nn.Linear(dim_feedforward, d_model)
-
-        self.norm = nn.LayerNorm(d_model)
-        self.activation = _get_activation_fn(activation)
-    
-        self._reset_parameters()
-    
-    def _reset_parameters(self):
-        for p in self.parameters():
-            if p.dim() > 1:
-                nn.init.xavier_uniform_(p)
-
-    def forward(self, queries):
-        queries2 = self.linear2(self.dropout(self.activation(self.linear1(queries))))
-        queries = queries + self.dropout(queries2)
-        queries = self.norm(queries)
-        return queries
-
 class MultiviewEncoder(nn.Module):
     def __init__(self, name='resnet50', num_feat_levels=3, 
                  num_queries=16, hidden_dim=256, dim_feedforward=2048, nheads=8, depth=9) :
@@ -253,7 +107,6 @@ class MultiviewEncoder(nn.Module):
 
         # level embedding
         self.level_embed = nn.Embedding(num_feat_levels, hidden_dim)    # [3, 256]
-
 
         # Block
         self.query_activation1 = nn.ModuleList()
