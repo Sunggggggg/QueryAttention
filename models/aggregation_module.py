@@ -283,6 +283,10 @@ class MultiviewEncoder(nn.Module):
 
         self.loss_func = ContrastiveLoss(self.num_queries)
 
+        self.refinenet1 = FeatureFusionBlock_custom(num_queries, nn.ReLU(False), deconv=False, bn=False, expand=False, align_corners=True)
+        self.refinenet2 = FeatureFusionBlock_custom(num_queries, nn.ReLU(False), deconv=False, bn=False, expand=False, align_corners=True)
+        self.refinenet3 = FeatureFusionBlock_custom(num_queries, nn.ReLU(False), deconv=False, bn=False, expand=False, align_corners=True)
+
     def forward(self, x, rel_transform, nviews=2):
         # 
         s = x.shape
@@ -301,6 +305,7 @@ class MultiviewEncoder(nn.Module):
         for level in range(self.num_feat_levels):
             # Feature map
             feat1, feat2 = feats1[level], feats2[level]     # [B, e, h, w]
+            print(feat1.shape)
             feat1 = feat1.flatten(-2).permute(0, 2, 1)
             feat2 = feat2.flatten(-2).permute(0, 2, 1)
 
@@ -374,7 +379,7 @@ class MultiviewEncoder(nn.Module):
         path_2 = self.refinenet2(path_3, keypoint_maps[1])
         path_1 = self.refinenet1(path_2, keypoint_maps[0])
 
-        return [path_2, path_1], contra_loss
+        return [path_2, path_1], contra_losses
     
 if __name__ == '__main__' :
     x = torch.rand((4, 3, 256, 256))
