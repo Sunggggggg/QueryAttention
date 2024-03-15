@@ -5,7 +5,7 @@ import math
 import models.resnet as resnet
 from operator import add
 from functools import reduce
-#from loss_functions import ContrastiveLoss
+from loss_functions import ContrastiveLoss
 
 class ResidualConvUnit_custom(nn.Module):
     def __init__(self, features, activation, bn):
@@ -280,7 +280,7 @@ class MultiviewEncoder(nn.Module):
             self.ffn_layers1.append(FFNLayer(d_model=hidden_dim, dim_feedforward=dim_feedforward, dropout=0.0))
             self.ffn_layers2.append(FFNLayer(d_model=hidden_dim, dim_feedforward=dim_feedforward, dropout=0.0))
 
-        #self.loss_func = ContrastiveLoss(self.num_queries)
+        self.loss_func = ContrastiveLoss(self.num_queries)
 
     def forward(self, x, rel_transform, nviews=2):
         # 
@@ -347,7 +347,7 @@ class MultiviewEncoder(nn.Module):
 
             queries1.append(query1)
             queries2.append(query2)
-            #contra_losses.append(self.loss_func(query1, query2))
+            contra_losses.append(self.loss_func(query1, query2))
 
         # Make pixel align
         keypoint_maps =[]
