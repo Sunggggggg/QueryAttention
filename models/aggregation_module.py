@@ -242,6 +242,7 @@ class FeatureExtractionHyperPixel(nn.Module):
 
 class MultiviewEncoder(nn.Module):
     def __init__(self, name='resnet50', num_feat_levels=3, num_queries=32, hidden_dim=256, dim_feedforward=2048, nheads=1, num_depth=12) :
+        super(MultiviewEncoder, self).__init__()
         self.num_feat_levels = num_feat_levels
         self.num_queries = num_queries
         self.hidden_dim = hidden_dim
