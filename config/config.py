@@ -10,7 +10,7 @@ def config_parser():
     parser.add_argument('--network', type=str, default='relu')
     parser.add_argument('--category', type=str, default='donut')
     parser.add_argument('--conditioning', type=str, default='hyper')
-    parser.add_argument('--experiment_name', type=str, required=True)
+    parser.add_argument('--experiment_name', type=str, default='experiment')
     parser.add_argument('--num_context', type=int, default=0)
     parser.add_argument('--batch_size', type=int, default=4)
     parser.add_argument('--num_trgt', type=int, default=1)
