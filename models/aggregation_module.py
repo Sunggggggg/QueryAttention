@@ -131,21 +131,21 @@ class Attention(nn.Module):
         head_dim = d_model // nhead
         self.scale = head_dim ** -0.5
 
-        if query_dim is None :
+        if query_dim is not None :
             self.q_proj = nn.Linear(query_dim, d_model, bias=False)
         else :
             self.q_proj = nn.Linear(d_model, d_model, bias=False)
 
-        if key_dim is None :
+        if key_dim is not None :
             self.k_proj = nn.Linear(key_dim, d_model, bias=False)
         else :
             self.k_proj = nn.Linear(d_model, d_model, bias=False)
 
-        if value_dim is None :
+        if value_dim is not None :
             self.v_proj = nn.Linear(value_dim, d_model, bias=False)
         else :
             self.v_proj = nn.Linear(d_model, d_model, bias=False)
-            
+
         self.attn_drop = nn.Dropout(dropout)
         self.proj = nn.Linear(d_model, d_model)
         self.proj_drop = nn.Dropout(dropout)
