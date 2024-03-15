@@ -6,7 +6,8 @@ from copy import deepcopy
 import models.geometry as geometry
 from .epipolar import project_rays
 from .encoder import SpatialEncoder, ImageEncoder, UNetEncoder
-from .transformer_encoder import MultiviewEncoder
+#from .transformer_encoder import MultiviewEncoder
+from .aggregation_module import MultiviewEncoder
 from .resnet_block_fc import ResnetFC
 from utils import util
 

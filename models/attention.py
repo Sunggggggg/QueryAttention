@@ -94,7 +94,7 @@ class AttentionLayer(nn.Module):
         
         return queries
 
-class SelfAttention(nn.Module):
+class Attention(nn.Module):
     def __init__(self, dim, num_heads=8, qkv_bias=False, qk_scale=None, attn_drop=0., proj_drop=0.):
         super().__init__()
         self.num_heads = num_heads

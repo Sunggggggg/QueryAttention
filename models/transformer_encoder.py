@@ -148,6 +148,8 @@ class MultiviewEncoder(nn.Module):
         self.refinenet2 = FeatureFusionBlock_custom(num_queries, nn.ReLU(False), deconv=False, bn=False, expand=False, align_corners=True)
         self.refinenet3 = FeatureFusionBlock_custom(num_queries, nn.ReLU(False), deconv=False, bn=False, expand=False, align_corners=True)
 
+        #
+        self.norm = nn.LayerNorm(num_queries)
         # Loss func
         self.loss_func = ContrastiveLoss(self.num_queries)
 
@@ -172,7 +174,7 @@ class MultiviewEncoder(nn.Module):
         pose_embed = pose_embed.reshape(s[0]//nviews, nviews, -1)
 
         # Feature map
-        keypoint_maps =[]
+        keypoint_maps, queries1, queries2 =[], [], []
         feats1, feats2 = self.backbone(img1), self.backbone(img2)   # [layer3, layer2, layer1]
         for i in range(self.depth) :
             level_index = i % self.num_feat_levels                      # [0, 1, 2]
@@ -207,18 +209,21 @@ class MultiviewEncoder(nn.Module):
 
             contra_loss = self.loss_func(query1, query2)
 
-        query = (query1 + query2) / 2
+            queries1.append(query1)
+            queries2.append(query2)
+        
         # Make pixel align
         for i in range(self.num_feat_levels) :
             feat1, feat2 = feats1[i], feats2[i]
+            query1, query2 = queries1[i], queries2[i]
             B, _, h, w = feat1.shape 
 
             feat1 = feat1.reshape(B, self.hidden_dim, -1).permute(0, 2, 1)   # [B, hw, e]
             feat2 = feat2.reshape(B, self.hidden_dim, -1).permute(0, 2, 1)   # [B, hw, e]
     
             # 
-            keypoint_map1 = torch.matmul(query, feat1.transpose(1,2)).reshape(B, self.num_queries, h, w)      # [B, Q, e]*[B, e, hw] = [B, Q, h, w]
-            keypoint_map2 = torch.matmul(query, feat2.transpose(1,2)).reshape(B, self.num_queries, h, w)
+            keypoint_map1 = torch.matmul(query1, feat1.transpose(1,2)).reshape(B, self.num_queries, h, w)      # [B, Q, e]*[B, e, hw] = [B, Q, h, w]
+            keypoint_map2 = torch.matmul(query2, feat2.transpose(1,2)).reshape(B, self.num_queries, h, w)
 
             keypoint_map = torch.stack([keypoint_map1, keypoint_map2], dim=1)                 
             keypoint_map = torch.flatten(keypoint_map, 0, 1)                # [2B, Q, H, W]
