@@ -20,7 +20,7 @@ def config_parser():
     # General training options
     parser.add_argument('--lr', type=float, default=5e-5)
     parser.add_argument('--l2_coeff', type=float, default=0.05)
-    parser.add_argument('--num_epochs', type=int, default=1000)
+    parser.add_argument('--num_epochs', type=int, default=500)
     parser.add_argument('--reconstruct', action='store_true', default=False)
     parser.add_argument('--lpips', action='store_true', default=False)
     parser.add_argument('--depth', action='store_true', default=False)
