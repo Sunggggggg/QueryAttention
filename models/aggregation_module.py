@@ -143,8 +143,10 @@ class Attention(nn.Module):
 
         if value_dim is not None :
             self.v_proj = nn.Linear(value_dim, value_dim, bias=False)
+            self.proj = nn.Linear(value_dim, value_dim, bias=False)
         else :
             self.v_proj = nn.Linear(d_model, d_model, bias=False)
+            self.proj = nn.Linear(d_model, d_model, bias=False)
 
         self.attn_drop = nn.Dropout(dropout)
         self.proj_drop = nn.Dropout(dropout)
@@ -157,23 +159,26 @@ class Attention(nn.Module):
         """
         query, key, value : [B, Q, e]
         """
-        _query = query
+        B, N_q, C_q = query.shape
+        B, N_k, C_k = query.shape
+        B, N_v, C_v = query.shape
 
         query = self.with_pos_embed(query, query_pos)
         key = self.with_pos_embed(key, key_pos)
 
-        # query = self.q_proj(query).view(B, -1, self.num_heads, C//self.num_heads) 
-        # key = self.k_proj(key).view(B, -1, self.num_heads, C//self.num_heads)      
-        # value = self.v_proj(value).view(B, -1, self.num_heads, C//self.num_heads)
-        query = self.q_proj(query)
-        key = self.k_proj(key)
-        value = self.v_proj(value)
+        query = self.q_proj(query).view(B, N_q, self.num_heads, C_q//self.num_heads) 
+        key = self.k_proj(key).view(B, N_k, self.num_heads, C_k//self.num_heads)      
+        value = self.v_proj(value).view(B, N_v, self.num_heads, C_v//self.num_heads)
+        # query = self.q_proj(query)
+        # key = self.k_proj(key)
+        # value = self.v_proj(value)
 
-        attn = (query @ key.transpose(-2, -1)) * self.scale # [B, Q1, e] @ [B, e, Q1] 
+        attn = (query @ key.transpose(-2, -1)) * self.scale # [B, N, h, h]
         attn = attn.softmax(dim=-1)
         attn = self.attn_drop(attn)
 
-        x = attn @ value            # [B, Q1, Q2] @ [B, Q2, e]  = [B, Q1, e]
+        x = (attn @ value).flatten(-2).reshape(B, N_v, C_v)            # [B, N, h, h] @ [B, N, h, e]  = [B, N, h, e]
+        x = self.proj(x)
         return x
 
 class FFNLayer(nn.Module):
@@ -288,19 +293,19 @@ class MultiviewEncoder(nn.Module):
         self.cross_attention_layers_cost_vol = nn.ModuleList()
 
         for _ in range(num_depth) :
-            self.query_activation1.append(Attention(d_model=hidden_dim, nhead=nheads, dropout=0.0))
-            self.query_activation2.append(Attention(d_model=hidden_dim, nhead=nheads, dropout=0.0))
+            self.query_activation1.append(Attention(d_model=hidden_dim, nhead=4, dropout=0.0))
+            self.query_activation2.append(Attention(d_model=hidden_dim, nhead=4, dropout=0.0))
             self.self_attention_layers_query.append(
-                Attention(d_model=hidden_dim, query_dim=hidden_dim+num_queries, key_dim=hidden_dim+num_queries, value_dim=hidden_dim, nhead=nheads, dropout=0.0)
+                Attention(d_model=hidden_dim, query_dim=hidden_dim+num_queries, key_dim=hidden_dim+num_queries, value_dim=hidden_dim, nhead=1, dropout=0.0)
                 )
             self.self_attention_layers_cost_vol.append(
-                Attention(d_model=hidden_dim, query_dim=hidden_dim+num_queries, key_dim=hidden_dim+num_queries, value_dim=num_queries, nhead=nheads, dropout=0.0)
+                Attention(d_model=hidden_dim, query_dim=hidden_dim+num_queries, key_dim=hidden_dim+num_queries, value_dim=num_queries, nhead=1, dropout=0.0)
                 )
             self.cross_attention_layers_query.append(
-                Attention(d_model=hidden_dim, query_dim=hidden_dim+num_queries, key_dim=hidden_dim+num_queries, value_dim=hidden_dim, nhead=nheads, dropout=0.0)
+                Attention(d_model=hidden_dim, query_dim=hidden_dim+num_queries, key_dim=hidden_dim+num_queries, value_dim=hidden_dim, nhead=1, dropout=0.0)
                 )
             self.cross_attention_layers_cost_vol.append(
-                Attention(d_model=hidden_dim, query_dim=hidden_dim+num_queries, key_dim=hidden_dim+num_queries, value_dim=num_queries, nhead=nheads, dropout=0.0)
+                Attention(d_model=hidden_dim, query_dim=hidden_dim+num_queries, key_dim=hidden_dim+num_queries, value_dim=num_queries, nhead=1, dropout=0.0)
                 )
             self.ffn_layers1.append(FFNLayer(d_model=hidden_dim, dim_feedforward=dim_feedforward, dropout=0.0))
             self.ffn_layers2.append(FFNLayer(d_model=hidden_dim, dim_feedforward=dim_feedforward, dropout=0.0))
@@ -387,7 +392,7 @@ class MultiviewEncoder(nn.Module):
                 query2 = self.norm7(query2)
                 query2 = self.ffn_layers1[depth](query2)
                 cost_volume2 = self.self_attention_layers_cost_vol[depth](cost_feat2, cost_feat2, cost_volume.permute(0, 2, 1)) # [B, Q2, Q1]
-                query2 = query2 + cost_volume2.softmax(dim=1) @ _query1     # [B, Q2, Q1] [B, Q1, e]
+                query2 = query2 + cost_volume2.softmax(dim=2) @ _query1     # [B, Q2, Q1] [B, Q1, e]
                 query2 = self.norm8(query2)
                 
                 # Inter Aggregtion
@@ -395,19 +400,19 @@ class MultiviewEncoder(nn.Module):
                 cost_feat2 = torch.cat([cost_volume.permute(0, 2, 1), query2], dim=-1)   # [B, Q2, (Q1+e)]
 
                 _query1, _query2 = query1, query2
-                query1 = self.cross_attention_layers_query[depth](cost_feat1, cost_feat2, _query2)  # []
+                query1 = query1 + self.cross_attention_layers_query[depth](cost_feat1, cost_feat2, _query2)  # [B, Q1, Q2] * [B, Q2, e]
                 query1 = self.norm9(query1)
                 query1 = self.ffn_layers2[depth](query1)
-                cost_volume1 = self.cross_attention_layers_cost_vol[depth](cost_feat1, cost_feat2, cost_volume) # [B, Q1, Q2]
-                query1 = query1 + cost_volume1.softmax(dim=1) @ _query2      # [B, Q1, Q2] [B, Q2, e]
-                query1 = self.norm10(query1)
+                # cost_volume1 = self.cross_attention_layers_cost_vol[depth](cost_feat1, cost_feat2, cost_volume) # [B, Q1, Q2]
+                # query1 = query1 + cost_volume1.softmax(dim=1) @ _query2      # [B, Q1, Q2] [B, Q2, e]
+                # query1 = self.norm10(query1)
 
-                query2 = self.cross_attention_layers_query[depth](cost_feat2, cost_feat1, _query1)   # [B, Q2, e]
+                query2 = query2 + self.cross_attention_layers_query[depth](cost_feat2, cost_feat1, _query1)   # [B, Q2, Q1] @ [B, Q1, e]
                 query2 = self.norm11(query2)
                 query2 = self.ffn_layers2[depth](query2)
-                cost_volume1 = self.cross_attention_layers_cost_vol[depth](cost_feat1, cost_feat2, cost_volume) # [B, Q1, Q2]
-                query1 = query1 + cost_volume1.softmax(dim=1) @ _query2      # [B, Q1, Q2] [B, Q2, e]
-                query2 = self.norm12(query2)
+                # cost_volume2 = self.cross_attention_layers_cost_vol[depth](cost_feat2, cost_feat1, cost_volume) # [B, Q2, Q1] @ [b, Q1, Q2]
+                # query2 = query2 + cost_volume2.softmax(dim=2) @ _query1      # [B, Q1, Q2] [B, Q2, e]
+                # query2 = self.norm12(query2)
 
             queries1.append(query1)
             queries2.append(query2)
