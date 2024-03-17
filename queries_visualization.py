@@ -111,7 +111,7 @@ if __name__ == "__main__" :
             high_feat = z[1]       # [2, dim1, H, W]      dim1=dim2=100
             mask_high_feat = torch.stack([_high_feat/_high_feat.max() for _high_feat in high_feat], 0)   # 
             print(mask_high_feat.shape)
-            mask_high_feat = torch.where(mask_high_feat >= 0.99, mask_high_feat, 
+            mask_high_feat = torch.where(mask_high_feat == 1.0, mask_high_feat, 
                                          torch.Tensor([0.0]).type(torch.float32).to(mask_high_feat.device))
             
             for k in range(mask_high_feat.shape[1]) :
