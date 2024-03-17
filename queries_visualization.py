@@ -117,8 +117,8 @@ if __name__ == "__main__" :
             for k in range(mask_high_feat.shape[1]) :
                 mask = mask_high_feat[:, k:k+1]         # [2, 1, H, W]
                 mask = mask.permute(0, 2, 3, 1).cpu().numpy()
-                mask1 = cv2.applyColorMap(np.uint8(mask[0]*255), cv2.COLORMAP_JET)  # [H, W, 3]
-                mask2 = cv2.applyColorMap(np.uint8(mask[1]*255), cv2.COLORMAP_JET)  # [H, W, 3]
+                mask1 = cv2.applyColorMap(np.uint8(mask[0]*255), cv2.COLORMAP_DEEPGREEN)  # [H, W, 3]
+                mask2 = cv2.applyColorMap(np.uint8(mask[1]*255), cv2.COLORMAP_DEEPGREEN)  # [H, W, 3]
                 mask1 = np.float32(mask1) / 255.
                 mask2 = np.float32(mask2) / 255.
 
