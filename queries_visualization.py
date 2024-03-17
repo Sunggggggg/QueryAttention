@@ -108,27 +108,20 @@ if __name__ == "__main__" :
                              torchvision.utils.make_grid(_context_images, scale_each=False, normalize=True).cpu().numpy(), total_iter)
             
             # 
-            high_feat = z[1]       # [2, dim1, H, W]      dim1=dim2=100
-            mask_high_feat = torch.stack([_high_feat/_high_feat.max() for _high_feat in high_feat], 0)   # 
-            print(mask_high_feat.shape)
-            mask_high_feat = torch.where(mask_high_feat == 1.0, mask_high_feat, 
-                                         torch.Tensor([0.0]).type(torch.float32).to(mask_high_feat.device))
-            
-            for k in range(mask_high_feat.shape[1]) :
-                mask = mask_high_feat[:, k:k+1]         # [2, 1, H, W]
-                mask = mask.permute(0, 2, 3, 1).cpu().numpy()
-                mask1, mask2 = mask[0], mask[1] # float32
-
-
-                # mask1 = cv2.applyColorMap(np.uint8(mask[0]*255), cv2.COLORMAP_JET)  # [H, W, 3]
-                # mask2 = cv2.applyColorMap(np.uint8(mask[1]*255), cv2.COLORMAP_JET)  # [H, W, 3]
-                # mask1 = np.float32(mask1) / 255.
-                # mask2 = np.float32(mask2) / 255.
+            high_feat = z[1]
+            for k in range(high_feat.shape[1]) :
+                featmaps = high_feat[:, k:k+1]                      # [2, 1, H, W]
+                mask = featmaps.permute(0, 2, 3, 1).cpu().numpy()   # [2, H, W, 1]
+                mask1, mask2 = mask[0], mask[1]                     # float32
 
                 cam1 = mask1 + np.float32(context_images[0].cpu().numpy())
                 cam2 = mask2 + np.float32(context_images[1].cpu().numpy())
                 cam1 = cam1 / np.max(cam1)
                 cam2 = cam2 / np.max(cam2)
+                
+                # filltering
+                cam1 = np.where(cam1 >= 0.95, cam1, np.float32(0.0))
+                cam2 = np.where(cam2 >= 0.95, cam1, np.float32(0.0))
 
                 cam1 = np.uint8(255 * cam1)
                 cam2 = np.uint8(255 * cam2)
