@@ -32,7 +32,6 @@ def config_parser():
     parser.add_argument('--checkpoint_path', default=None)
     # Ablations
     parser.add_argument('--no_multiview', action='store_true', default=False)
-    parser.add_argument('--no_multiview', action='store_true', default=False)
     parser.add_argument('--no_sample', action='store_true', default=False)
     parser.add_argument('--no_latent_concat', action='store_true', default=False)
     parser.add_argument('--no_data_aug', action='store_true', default=False)
