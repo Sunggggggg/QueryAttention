@@ -137,8 +137,8 @@ if __name__ == "__main__" :
                 cam1 = np.uint8(255 * cam1)
                 cam2 = np.uint8(255 * cam2)
 
-                cam1 = cv2.applyColorMap(cam1, cv2.COLORMAP_JET)  # [H, W, 3]
-                cam2 = cv2.applyColorMap(cam2, cv2.COLORMAP_JET)  # [H, W, 3] 
+                cam1 = cv2.applyColorMap(cam1, cv2.COLORMAP_BONE)  # [H, W, 3]
+                cam2 = cv2.applyColorMap(cam2, cv2.COLORMAP_BONE)  # [H, W, 3] 
                 cam = np.stack([cam1, cam2], axis=0)               # [2, H, W, 3]
 
                 cam = cam.transpose(0, -1, 1, 2)
