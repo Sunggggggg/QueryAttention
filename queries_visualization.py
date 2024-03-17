@@ -111,20 +111,18 @@ if __name__ == "__main__" :
             high_feat = z[1]
             for k in range(high_feat.shape[1]) :
                 featmaps = high_feat[:, k:k+1]                      # [2, 1, H, W]
+                featmaps = featmaps / featmaps.max()
                 mask = featmaps.permute(0, 2, 3, 1).cpu().numpy()   # [2, H, W, 1]
                 mask1, mask2 = mask[0], mask[1]                     # float32
-                mask1 = np.float32(mask1/mask1.max())
-                mask2 = np.float32(mask2/mask2.max())
+                mask1 = np.where(mask1 >= 0.95, mask1, np.float32(0.0)) # [H, W, 3]
+                mask2 = np.where(mask2 >= 0.95, mask2, np.float32(0.0)) #
 
-                cam1 = mask1 + np.float32(context_images[0].cpu().numpy())
-                cam2 = mask2 + np.float32(context_images[1].cpu().numpy())
+                cam1 = mask1 * np.float32(context_images[0].cpu().numpy())
+                cam2 = mask2 * np.float32(context_images[1].cpu().numpy())
                 cam1 = cam1 / np.max(cam1)
                 cam2 = cam2 / np.max(cam2)
                 
                 # filltering
-                cam1 = np.where(cam1 >= 0.95, cam1, np.float32(0.0))
-                cam2 = np.where(cam2 >= 0.95, cam2, np.float32(0.0))
-
                 cam1 = np.uint8(255 * cam1)
                 cam2 = np.uint8(255 * cam2)
 
