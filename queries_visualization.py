@@ -117,10 +117,13 @@ if __name__ == "__main__" :
             for k in range(mask_high_feat.shape[1]) :
                 mask = mask_high_feat[:, k:k+1]         # [2, 1, H, W]
                 mask = mask.permute(0, 2, 3, 1).cpu().numpy()
-                mask1 = cv2.applyColorMap(np.uint8(mask[0]*255), cv2.COLORMAP_DEEPGREEN)  # [H, W, 3]
-                mask2 = cv2.applyColorMap(np.uint8(mask[1]*255), cv2.COLORMAP_DEEPGREEN)  # [H, W, 3]
-                mask1 = np.float32(mask1) / 255.
-                mask2 = np.float32(mask2) / 255.
+                mask1, mask2 = mask[0], mask[1] # float32
+
+
+                # mask1 = cv2.applyColorMap(np.uint8(mask[0]*255), cv2.COLORMAP_JET)  # [H, W, 3]
+                # mask2 = cv2.applyColorMap(np.uint8(mask[1]*255), cv2.COLORMAP_JET)  # [H, W, 3]
+                # mask1 = np.float32(mask1) / 255.
+                # mask2 = np.float32(mask2) / 255.
 
                 cam1 = mask1 + np.float32(context_images[0].cpu().numpy())
                 cam2 = mask2 + np.float32(context_images[1].cpu().numpy())
@@ -130,7 +133,10 @@ if __name__ == "__main__" :
                 cam1 = np.uint8(255 * cam1)
                 cam2 = np.uint8(255 * cam2)
 
-                cam = np.stack([cam1, cam2], axis=0)        # [2, H, W, 3]
+                cam1 = cv2.applyColorMap(cam1, cv2.COLORMAP_JET)  # [H, W, 3]
+                cam2 = cv2.applyColorMap(cam2, cv2.COLORMAP_JET)  # [H, W, 3]
+                cam = np.stack([cam1, cam2], axis=0)               # [2, H, W, 3]
+
                 cam = cam.transpose(0, -1, 1, 2)
                 writer.add_image(f"Attention Maps{k}", 
                                 torchvision.utils.make_grid(torch.tensor(cam), scale_each=False), total_iter)
