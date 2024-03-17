@@ -190,7 +190,7 @@ class Attention(nn.Module):
         attn = attn.softmax(dim=-1)
         attn = self.attn_drop(attn)
 
-        x = (attn @ value).transpose(1, 2).reshape(B, N_v, -1)  # [B, h, N, N] @ [B, h, N, e]  = [B, h, N, e] - [B, N, h, e] 
+        x = (attn @ value).transpose(1, 2).reshape(B, N_q, -1)  # [B, h, N, N] @ [B, h, N, e]  = [B, h, N, e] - [B, N, h, e] 
         x = self.proj(x)
         return x
 
