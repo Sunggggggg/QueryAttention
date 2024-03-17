@@ -311,7 +311,6 @@ class MultiviewEncoder(nn.Module):
         self.refinenet2 = FeatureFusionBlock_custom(num_queries, nn.ReLU(False), deconv=False, bn=False, expand=False, align_corners=True)
         self.refinenet3 = FeatureFusionBlock_custom(num_queries, nn.ReLU(False), deconv=False, bn=False, expand=False, align_corners=True)
 
-
         self.norm1 = nn.LayerNorm(hidden_dim)
         self.norm2 = nn.LayerNorm(hidden_dim)
         self.norm3 = nn.LayerNorm(hidden_dim)
@@ -322,6 +321,8 @@ class MultiviewEncoder(nn.Module):
         self.norm8 = nn.LayerNorm(hidden_dim)
         self.norm9 = nn.LayerNorm(hidden_dim)
         self.norm10 = nn.LayerNorm(hidden_dim)
+        self.norm11 = nn.LayerNorm(hidden_dim)
+        self.norm12 = nn.LayerNorm(hidden_dim)
 
     def forward(self, x, rel_transform, nviews=2):
         # 
@@ -341,19 +342,22 @@ class MultiviewEncoder(nn.Module):
         for level in range(self.num_feat_levels):
             # Feature map
             feat1, feat2 = feats1[level], feats2[level]     # [B, e, h, w]
+
+            # Query pos_embed
+            query_pos1 = query_embed_x + self.query_embed_y1.unsqueeze(0).repeat(B, 1, 1)
+            query_pos2 = query_embed_x + self.query_embed_y2.unsqueeze(0).repeat(B, 1, 1) # [B, Q, e]
+
             # Key pos_embed
             key_pos1 = self.pe_layer(feat1)
             key_pos2 = self.pe_layer(feat2)                 # [B, e, hw]
             key_pos1 = key_pos1.permute(0, 2, 1)            # [B, hw, e]
             key_pos2 = key_pos2.permute(0, 2, 1)
+            # key_pos1 = key_pos1 + self.query_embed_y1.unsqueeze(0).repeat(B, 1, 1)
+            # key_pos2 = key_pos2 + self.query_embed_y2.unsqueeze(0).repeat(B, 1, 1)
 
             feat1 = feat1.reshape(B, self.hidden_dim, -1).permute(0, 2, 1)   # [B, hw, e]
             feat2 = feat2.reshape(B, self.hidden_dim, -1).permute(0, 2, 1)   # [B, hw, e]
             
-            # Query pos_embed
-            query_pos1 = query_embed_x + self.query_embed_y1.unsqueeze(0).repeat(B, 1, 1)
-            query_pos2 = query_embed_x + self.query_embed_y2.unsqueeze(0).repeat(B, 1, 1) # [B, Q, e]
-
             for depth in range(self.num_depth):
                 # Query Activation
                 query1 = query1 + self.query_activation1[depth](query1, query1, query1, query_pos=query_embed_x)
@@ -394,15 +398,22 @@ class MultiviewEncoder(nn.Module):
                 query1 = self.cross_attention_layers_query[depth](cost_feat1, cost_feat2, _query2)  # []
                 query1 = self.norm9(query1)
                 query1 = self.ffn_layers2[depth](query1)
+                cost_volume1 = self.cross_attention_layers_cost_vol[depth](cost_feat1, cost_feat2, cost_volume) # [B, Q1, Q2]
+                query1 = query1 + cost_volume1.softmax(dim=1) @ _query2      # [B, Q1, Q2] [B, Q2, e]
+                query1 = self.norm10(query1)
 
                 query2 = self.cross_attention_layers_query[depth](cost_feat2, cost_feat1, _query1)   # [B, Q2, e]
-                query2 = self.norm10(query2)
+                query2 = self.norm11(query2)
                 query2 = self.ffn_layers2[depth](query2)
+                cost_volume1 = self.cross_attention_layers_cost_vol[depth](cost_feat1, cost_feat2, cost_volume) # [B, Q1, Q2]
+                query1 = query1 + cost_volume1.softmax(dim=1) @ _query2      # [B, Q1, Q2] [B, Q2, e]
+                query2 = self.norm12(query2)
 
             queries1.append(query1)
             queries2.append(query2)
             contra_losses.append(self.loss_func(query1, query2))
 
+        contra_losses = torch.tensor(contra_losses) # [3]
         # Make pixel align
         keypoint_maps =[]
         for i in range(self.num_feat_levels) :
@@ -427,7 +438,7 @@ class MultiviewEncoder(nn.Module):
         path_2 = self.refinenet2(path_3, keypoint_maps[1])
         path_1 = self.refinenet1(path_2, keypoint_maps[0])
 
-        return [path_2, path_1], contra_losses[-1]
+        return [path_2, path_1], contra_losses
     
 if __name__ == '__main__' :
     x = torch.rand((4, 3, 256, 256))
