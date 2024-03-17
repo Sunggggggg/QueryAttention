@@ -83,7 +83,7 @@ class CrossAttentionRenderer(nn.Module):
             self.encoder = SpatialEncoder(use_first_pool=False, num_layers=num_feat_levels)
             self.latent_dim = 512
         elif model == 'query':
-            self.encoder = MultiviewEncoder(num_feat_levels=num_feat_levels, num_queries=8, hidden_dim=hidden_dim, nheads=nheads, num_depth=depth)
+            self.encoder = MultiviewEncoder(num_feat_levels=num_feat_levels, num_queries=num_queries, hidden_dim=hidden_dim, nheads=nheads, num_depth=depth)
             self.conv_map = nn.Conv2d(3, 64, kernel_size=7, stride=1, padding=3)
             self.latent_dim = num_queries*2 + 64 
         else:
