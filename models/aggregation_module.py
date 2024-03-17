@@ -150,6 +150,21 @@ class Attention(nn.Module):
 
         self.attn_drop = nn.Dropout(dropout)
 
+        self._reset_parameters()
+
+    def _reset_parameters(self):
+        torch.manual_seed(0)
+        nn.init.xavier_uniform_(self.q_proj.weight)
+        nn.init.xavier_uniform_(self.k_proj.weight)
+        nn.init.xavier_uniform_(self.v_proj.weight)
+        nn.init.xavier_uniform_(self.proj.weight)
+        if self.k_proj.bias is not None:
+            nn.init.xavier_normal_(self.k_proj.bias)
+        if self.v_proj.bias is not None:
+            nn.init.xavier_normal_(self.v_proj.bias)
+        if self.proj.bias is not None:
+            nn.init.constant_(self.proj.bias, 0.)
+
     def with_pos_embed(self, tensor, pos=None):
         return tensor if pos is None else tensor + pos
 
@@ -158,8 +173,8 @@ class Attention(nn.Module):
         query, key, value : [B, Q, e]
         """
         B, N_q, C_q = query.shape
-        B, N_k, C_k = query.shape
-        B, N_v, C_v = query.shape
+        B, N_k, C_k = key.shape
+        B, N_v, C_v = value.shape
 
         query = self.with_pos_embed(query, query_pos)
         key = self.with_pos_embed(key, key_pos)
