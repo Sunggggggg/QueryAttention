@@ -127,10 +127,11 @@ if __name__ == "__main__" :
                 mask1 = np.where(mask1 >= 0.5, np.float32(1.0), np.float32(0.0))
                 mask2 = np.where(mask2 >= 0.5, np.float32(1.0), np.float32(0.0))
 
-                cam1 = mask1 * np.float32(context_images[0].cpu().numpy())
-                cam2 = mask2 * np.float32(context_images[1].cpu().numpy())
-
-                # filltering
+                cam1 = mask1 + np.float32(context_images[0].cpu().numpy())
+                cam2 = mask2 + np.float32(context_images[1].cpu().numpy())
+                cam1 = cam1 / np.max(cam1)
+                cam2 = cam2 / np.max(cam2)
+            
                 cam1 = np.uint8(255 * cam1)
                 cam2 = np.uint8(255 * cam2)
 
