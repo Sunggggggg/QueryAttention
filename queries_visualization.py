@@ -122,12 +122,9 @@ if __name__ == "__main__" :
                 featmaps = featmaps / featmaps.max()
                 mask = featmaps.permute(0, 2, 3, 1).cpu().numpy()   # [2, H, W, 1]
                 mask1, mask2 = mask[0], mask[1]                     # float32
-                mask1 = np.where(mask1 >= 0.95, mask1, np.float32(0.0)) # [H, W, 3]
-                mask2 = np.where(mask2 >= 0.95, mask2, np.float32(0.0)) #
-
+                
                 cam1 = mask1 * np.float32(context_images[0].cpu().numpy())
                 cam2 = mask2 * np.float32(context_images[1].cpu().numpy())
-                print(cam1)
                 # filltering
                 cam1 = np.uint8(255 * cam1)
                 cam2 = np.uint8(255 * cam2)
