@@ -164,10 +164,9 @@ class Attention(nn.Module):
         query = self.with_pos_embed(query, query_pos)
         key = self.with_pos_embed(key, key_pos)
 
-        query = self.q_proj(query).view(B, N_q, self.num_heads, C_q//self.num_heads) 
-        print(key.shape)
-        key = self.k_proj(key).view(B, N_k, self.num_heads, C_k//self.num_heads)      
-        value = self.v_proj(value).view(B, N_v, self.num_heads, C_v//self.num_heads)
+        query = self.q_proj(query).view(B, -1, self.num_heads, C_q//self.num_heads) 
+        key = self.k_proj(key).view(B, -1, self.num_heads, C_k//self.num_heads)      
+        value = self.v_proj(value).view(B, -1, self.num_heads, C_v//self.num_heads)
         # query = self.q_proj(query)
         # key = self.k_proj(key)
         # value = self.v_proj(value)
