@@ -179,18 +179,18 @@ class Attention(nn.Module):
         query = self.with_pos_embed(query, query_pos)
         key = self.with_pos_embed(key, key_pos)
 
-        query = self.q_proj(query).reshape(B, N_q, self.num_heads, C_q//self.num_heads) 
-        key = self.k_proj(key).reshape(B, N_k, self.num_heads, C_k//self.num_heads)      
-        value = self.v_proj(value).reshape(B, N_v, self.num_heads, C_v//self.num_heads)
+        query = self.q_proj(query).reshape(B, N_q, self.num_heads, C_q//self.num_heads).permute(0, 2, 1, 3)
+        key = self.k_proj(key).reshape(B, N_k, self.num_heads, C_k//self.num_heads).permute(0, 2, 1, 3)      
+        value = self.v_proj(value).reshape(B, N_v, self.num_heads, C_v//self.num_heads).permute(0, 2, 1, 3)
         # query = self.q_proj(query)
         # key = self.k_proj(key)
         # value = self.v_proj(value)
 
-        attn = (query @ key.transpose(-2, -1)) * self.scale # [B, N, h, h]
+        attn = (query @ key.transpose(-2, -1)) * self.scale # [B, N, h, c] [B, N, c, h]
         attn = attn.softmax(dim=-1)
         attn = self.attn_drop(attn)
 
-        x = (attn @ value).flatten(-2).reshape(B, N_v, C_v)            # [B, N, h, h] @ [B, N, h, e]  = [B, N, h, e]
+        x = (attn @ value).transpose(1, 2).reshape(B, N_v, C_v)            # [B, N, h, h] @ [B, N, h, e]  = [B, N, h, e]
         x = self.proj(x)
         return x
 
