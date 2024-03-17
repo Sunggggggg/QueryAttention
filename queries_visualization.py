@@ -119,7 +119,7 @@ if __name__ == "__main__" :
 
                 cam1 = mask1 * np.float32(context_images[0].cpu().numpy())
                 cam2 = mask2 * np.float32(context_images[1].cpu().numpy())
-                print(cam1.shape)
+                print(cam1)
                 # filltering
                 cam1 = np.uint8(255 * cam1)
                 cam2 = np.uint8(255 * cam2)
