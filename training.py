@@ -207,18 +207,19 @@ def train(model, dataloaders, epochs, lr, epochs_til_checkpoint, model_dir, loss
                                 val_summary_fn(model, model_input, gt, val_loss_smry, model_output, writer, total_steps, 'val_', img_shape=(model.H, model.W), n_view=n_view)
 
                             if model_name == 'query':
-                                high_feat = z[1]  
-                                mask_high_feat = torch.stack([_high_feat/_high_feat.max() for _high_feat in high_feat], 0)
-                                #mask_high_feat = torch.where(mask_high_feat >= 0.8, mask_high_feat, torch.Tensor([0.0]).type(torch.float32).to(mask_high_feat.device))
+                                high_feat = z[1]
                                 context_images = util.flatten_first_two(model_input['context']['rgb'])# [2B, H, W, 3]
-                            
-                                for k in range(mask_high_feat.shape[1]) :
-                                    mask = mask_high_feat[:, k:k+1]         # [2, 1, H, W]
-                                    mask = mask.permute(0, 2, 3, 1).cpu().numpy()
-                                    mask1 = cv2.applyColorMap(np.uint8(mask[0]*255), cv2.COLORMAP_JET)  # [H, W, 3]
-                                    mask2 = cv2.applyColorMap(np.uint8(mask[1]*255), cv2.COLORMAP_JET)  # [H, W, 3]
-                                    mask1 = np.float32(mask1) / 255.
-                                    mask2 = np.float32(mask2) / 255.
+                                for k in range(high_feat.shape[1]) :
+                                    featmaps = high_feat[:, k:k+1]                      # [2, 1, H, W]
+                                    mask = featmaps.permute(0, 2, 3, 1).cpu().numpy()   # [2, H, W, 1]
+                                    mask1, mask2 = mask[0], mask[1]                     
+                                    mask1 = mask1 / mask1.max()
+                                    mask2 = mask2 / mask2.max()
+                                    mask1[mask1<0.5] = 0.0
+                                    mask2[mask2<0.5] = 0.0
+
+                                    # mask1 = np.where(mask1 >= 0.5, np.float32(1.0), np.float32(0.0))
+                                    # mask2 = np.where(mask2 >= 0.5, np.float32(1.0), np.float32(0.0))
 
                                     cam1 = mask1 + np.float32(context_images[0].cpu().numpy())
                                     cam2 = mask2 + np.float32(context_images[1].cpu().numpy())
@@ -228,7 +229,10 @@ def train(model, dataloaders, epochs, lr, epochs_til_checkpoint, model_dir, loss
                                     cam1 = np.uint8(255 * cam1)
                                     cam2 = np.uint8(255 * cam2)
 
-                                    cam = np.stack([cam1, cam2], axis=0)        # [2, H, W, 3]
+                                    cam1 = cv2.applyColorMap(cam1, cv2.COLORMAP_JET)  # [H, W, 3]
+                                    cam2 = cv2.applyColorMap(cam2, cv2.COLORMAP_JET)  # [H, W, 3] 
+                                    cam = np.stack([cam1, cam2], axis=0)               # [2, H, W, 3]
+
                                     cam = cam.transpose(0, -1, 1, 2)
                                     writer.add_image(f"Attention Maps{k}", 
                                                     torchvision.utils.make_grid(torch.tensor(cam), scale_each=False), total_steps)

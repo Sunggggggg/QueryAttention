@@ -30,8 +30,8 @@ def config_parser():
     parser.add_argument('--steps_til_summary', type=int, default=500)
     parser.add_argument('--iters_til_ckpt', type=int, default=10000)
     parser.add_argument('--checkpoint_path', default=None)
-
     # Ablations
+    parser.add_argument('--no_multiview', action='store_true', default=False)
     parser.add_argument('--no_multiview', action='store_true', default=False)
     parser.add_argument('--no_sample', action='store_true', default=False)
     parser.add_argument('--no_latent_concat', action='store_true', default=False)
