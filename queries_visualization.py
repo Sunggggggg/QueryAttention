@@ -131,16 +131,17 @@ if __name__ == "__main__" :
                 cam1 = cam1 / np.max(cam1)
                 cam2 = cam2 / np.max(cam2)
 
-                mask1 = mask1 >= 0.5
+                mask1 = mask1 >= 0.5    # [H, W, 1]
                 mask2 = mask2 >= 0.5
             
                 cam1 = np.uint8(255 * cam1)
                 cam2 = np.uint8(255 * cam2)
-
-                cam1 = cv2.applyColorMap(cam1, cv2.COLORMAP_JET)  # [H, W, 3]
-                cam2 = cv2.applyColorMap(cam2, cv2.COLORMAP_JET)  # [H, W, 3]
                 cam1 = cam1[mask1]
                 cam2 = cam2[mask2]
+                
+                cam1 = cv2.applyColorMap(cam1, cv2.COLORMAP_JET)  # [H, W, 3]
+                cam2 = cv2.applyColorMap(cam2, cv2.COLORMAP_JET)  # [H, W, 3]
+                
                 
                 cam = np.stack([cam1, cam2], axis=0)               # [2, H, W, 3]
 
