@@ -108,10 +108,14 @@ if __name__ == "__main__" :
                              torchvision.utils.make_grid(_context_images, scale_each=False, normalize=True).cpu().numpy(), total_iter)
             
             # 
-            context_images = (context_images+1)/2
-            context_images[..., 0] = (context_images[..., 0] - 0.485) / 0.229
-            context_images[..., 1] = (context_images[..., 1] - 0.456) / 0.224
-            context_images[..., 2] = (context_images[..., 2] - 0.406) / 0.225
+            def norm(img):
+                low, high = img.min(), img.max()
+                img.clamp_(min=low, max=high)
+                img.sub_(low).div_(max(high - low, 1e-5))
+                return img
+            
+            context_images = torch.stack([norm(context) for context in context_images])
+            
             high_feat = z[1]
             for k in range(high_feat.shape[1]) :
                 featmaps = high_feat[:, k:k+1]                      # [2, 1, H, W]
