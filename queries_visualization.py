@@ -48,10 +48,6 @@ if __name__ == "__main__" :
     model.cuda().eval()
 
     # 
-    backbone = model.encoder.backbone
-    query_feat = model.encoder.query_feat.weight
-    query_embed = model.encoder.query_embed.weight
-
     query_featmap_path = os.path.join(args.logging_root, 'QueryAttention')
     os.makedirs(query_featmap_path, exist_ok=True)
     writer = SummaryWriter(query_featmap_path, flush_secs=10)
