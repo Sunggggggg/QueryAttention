@@ -114,7 +114,7 @@ if __name__ == "__main__" :
             mask_high_feat = torch.where(mask_high_feat >= 0.99, mask_high_feat, 
                                          torch.Tensor([0.0]).type(torch.float32).to(mask_high_feat.device))
             
-            for k in range(100) :
+            for k in range(mask_high_feat.shape[1]) :
                 mask = mask_high_feat[:, k:k+1]         # [2, 1, H, W]
                 mask = mask.permute(0, 2, 3, 1).cpu().numpy()
                 mask1 = cv2.applyColorMap(np.uint8(mask[0]*255), cv2.COLORMAP_JET)  # [H, W, 3]
