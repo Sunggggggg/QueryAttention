@@ -1,6 +1,7 @@
 #!/bin/bash
 
 data_dirs=("Exp4" "Exp3_8queries" "Exp3_no_contra" "Exp3" "Exp2")
+num_quereis=(64 8 )
 
 for dir in $data_dirs
 do

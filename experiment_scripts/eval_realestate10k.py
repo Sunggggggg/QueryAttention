@@ -71,7 +71,8 @@ def multigpu_train(gpu, opt):
                                             no_multiview=opt.no_multiview,
                                             no_high_freq=opt.no_high_freq, 
                                             model=opt.model, 
-                                            n_view=opt.views, 
+                                            n_view=opt.views,
+                                            num_queries=opt.num_queries
                                             )
     old_state_dict = model.state_dict()
 
