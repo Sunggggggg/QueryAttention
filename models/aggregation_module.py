@@ -289,8 +289,7 @@ class MultiviewEncoder(nn.Module):
 
         # Learnable query
         self.query_feat = nn.Parameter(torch.rand(num_queries, hidden_dim), requires_grad=True) 
-        self.query_embed_x = nn.Parameter(torch.rand(num_queries, hidden_dim), requires_grad=True) 
-
+        self.query_embed_x = nn.Parameter(torch.rand(num_queries), requires_grad=True) 
         # 
         self.query_embed_y1 = nn.Parameter(torch.rand(num_queries, hidden_dim), requires_grad=True)
         self.query_embed_y2 = nn.Parameter(torch.rand(num_queries, hidden_dim), requires_grad=True)
@@ -342,6 +341,15 @@ class MultiviewEncoder(nn.Module):
         self.norm11 = nn.LayerNorm(hidden_dim)
         self.norm12 = nn.LayerNorm(hidden_dim)
 
+    def L2Norm(self, x, dim=1):
+        """ Feature map normalization (SFNet)
+        x : [B, C, H, W]
+        """
+        eps = 1e-6
+        norm = (x**2).sum(dim=dim, keepdim=True) + eps  # [B, 1, H, W]
+        norm = norm**(0.5)
+        return x / norm
+
     def forward(self, x, rel_transform, nviews=2):
         # 
         s = x.shape
@@ -350,8 +358,8 @@ class MultiviewEncoder(nn.Module):
 
         # Learnable query init
         B = x.shape[0]
-        init_query = self.query_feat.unsqueeze(0).repeat(B, 1, 1)                   # [B, Q, e]
-        query_embed_x = self.query_embed_x.unsqueeze(0).repeat(B, 1, 1)             # [B, Q, e]
+        init_query = self.query_feat.unsqueeze(0).repeat(B, 1, 1)       # [B, Q, e]
+        query_embed_x = self.query_embed_x.view(1, -1, 1)               # [1, Q, 1]
         query1, query2 = init_query, init_query
 
         # Multiscale feature map
@@ -360,18 +368,22 @@ class MultiviewEncoder(nn.Module):
         for level in range(self.num_feat_levels):
             # Feature map
             feat1, feat2 = feats1[level], feats2[level]     # [B, e, h, w]
-
+            feat1, feat2 = self.L2Norm(feat1), self.L2Norm(feat2)
             # Query pos_embed
-            query_pos1 = query_embed_x + self.query_embed_y1.unsqueeze(0).repeat(B, 1, 1)
-            query_pos2 = query_embed_x + self.query_embed_y2.unsqueeze(0).repeat(B, 1, 1) # [B, Q, e]
+            query_pos1 = query_embed_x + self.query_embed_y1.unsqueeze(0)  
+            query_pos2 = query_embed_x + self.query_embed_y2.unsqueeze(0)   # [1, Q, e]
+
+            # Cost vol
+            cost_pos_embed = query_pos1.unsqueeze(2).repeat(1, 1, self.num_queries, 1) \
+                + query_pos2.unsqueeze(1).repeat(1, self.num_queries, 1, 1)  # [1, Q1, Q2, e]
+            cost_pos_embed1 = cost_pos_embed.flatten(-2)                            # [1, Q1, Q2+e]
+            cost_pos_embed2 = cost_pos_embed.permute(0, 2, 1, 3).flatten(-2)        # [1, Q2, Q1+e]
 
             # Key pos_embed
             key_pos1 = self.pe_layer(feat1)
             key_pos2 = self.pe_layer(feat2)                 # [B, e, hw]
             key_pos1 = key_pos1.permute(0, 2, 1)            # [B, hw, e]
             key_pos2 = key_pos2.permute(0, 2, 1)
-            # key_pos1 = key_pos1 + self.query_embed_y1.unsqueeze(0).repeat(B, 1, 1)
-            # key_pos2 = key_pos2 + self.query_embed_y2.unsqueeze(0).repeat(B, 1, 1)
 
             feat1 = feat1.reshape(B, self.hidden_dim, -1).permute(0, 2, 1)   # [B, hw, e]
             feat2 = feat2.reshape(B, self.hidden_dim, -1).permute(0, 2, 1)   # [B, hw, e]
@@ -380,55 +392,34 @@ class MultiviewEncoder(nn.Module):
                 # Query Activation
                 query1 = query1 + self.query_activation1[depth](query1, query1, query1, query_pos=query_embed_x)
                 query2 = query2 + self.query_activation1[depth](query2, query2, query2, query_pos=query_embed_x)
-                query1 = self.norm1(query1)
-                query2 = self.norm2(query1)
+                query1, query2 = self.norm1(query1), self.norm2(query2)
 
                 query1 = query1 + self.query_activation2[depth](query1, feat1, feat1, query_pos=query_pos1, key_pos=key_pos1)
                 query2 = query2 + self.query_activation2[depth](query2, feat2, feat2, query_pos=query_pos2, key_pos=key_pos2)
-                query1 = self.norm3(query1)
-                query2 = self.norm4(query1)
+                query1, query2 = self.norm3(query1), self.norm4(query2)
+
                 cost_volume = query1 @ query2.permute(0, 2, 1)  # [B, Q1, Q2]
-
+                cost_feat1 = torch.cat([cost_volume, query1], dim=-1)                    # [B, Q1, (Q2+e)]
+                cost_feat2 = torch.cat([cost_volume.permute(0, 2, 1), query2], dim=-1)   # [B, Q2, (Q1+e)]
                 # Intra Aggreagation
-                cost_feat1 = torch.cat([cost_volume, query1], dim=-1)                    # [B, Q1, (Q2+e)]
-                cost_feat2 = torch.cat([cost_volume.permute(0, 2, 1), query2], dim=-1)   # [B, Q2, (Q1+e)]
-
                 _query1, _query2 = query1, query2
-                query1 = query1 + self.self_attention_layers_query[depth](cost_feat1, cost_feat1, _query1)
-                query1 = self.norm5(query1)
+                query1 = query1 + self.self_attention_layers_query[depth](cost_feat1, cost_feat1, _query1, 
+                                                                      query_pos=cost_pos_embed1, key_pos=cost_pos_embed1)
+                cost_volume1 = self.self_attention_layers_cost_vol[depth](cost_feat1, cost_feat1, cost_volume,
+                                                                      query_pos=cost_pos_embed1, key_pos=cost_pos_embed1)   # [B, Q1, Q2]
+                query2 = query2 + self.self_attention_layers_query[depth](cost_feat2, cost_feat2, _query2,
+                                                                      query_pos=cost_pos_embed2, key_pos=cost_pos_embed2)   # [B, Q2, e]
+                cost_volume2 = self.self_attention_layers_cost_vol[depth](cost_feat2, cost_feat2, cost_volume.permute(0, 2, 1),
+                                                                      query_pos=cost_pos_embed2, key_pos=cost_pos_embed2)   # [B, Q2, Q1]
+                query1, query2 = self.norm5(query1), self.norm6(query2)
                 query1 = self.ffn_layers1[depth](query1)
-                cost_volume1 = self.self_attention_layers_cost_vol[depth](cost_feat1, cost_feat1, cost_volume) # [B, Q1, Q2]
-                query1 = query1 + cost_volume1.softmax(dim=1) @ _query2      # [B, Q1, Q2] [B, Q2, e]
-                query1 = self.norm6(query1)
-
-                query2 = query2 + self.self_attention_layers_query[depth](cost_feat2, cost_feat2, _query2)   # [B, Q2, e]
-                query2 = self.norm7(query2)
                 query2 = self.ffn_layers1[depth](query2)
-                cost_volume2 = self.self_attention_layers_cost_vol[depth](cost_feat2, cost_feat2, cost_volume.permute(0, 2, 1)) # [B, Q2, Q1]
-                query2 = query2 + cost_volume2.softmax(dim=2) @ _query1     # [B, Q2, Q1] [B, Q1, e]
-                query2 = self.norm8(query2)
-                
-                # Inter Aggregtion
-                cost_feat1 = torch.cat([cost_volume, query1], dim=-1)                    # [B, Q1, (Q2+e)]
-                cost_feat2 = torch.cat([cost_volume.permute(0, 2, 1), query2], dim=-1)   # [B, Q2, (Q1+e)]
 
-                _query1, _query2 = query1, query2
-                query1 = query1 + self.cross_attention_layers_query[depth](cost_feat1, cost_feat2, _query2)  # [B, Q1, Q2] * [B, Q2, e]
-                query1 = self.norm9(query1)
-                query1 = self.ffn_layers2[depth](query1)
-                # cost_volume1 = self.cross_attention_layers_cost_vol[depth](cost_feat1, cost_feat2, cost_volume) # [B, Q1, Q2]
-                # query1 = query1 + cost_volume1.softmax(dim=1) @ _query2      # [B, Q1, Q2] [B, Q2, e]
-                # query1 = self.norm10(query1)
+                cost_volume = cost_volume1 + cost_volume2.permute(0, 2, 1)   # Refine cost vol
+                query1 = query1 + cost_volume.softmax(dim=1) @ _query2      # [B, Q1, Q2] [B, Q2, e]
+                query2 = query2 + cost_volume.softmax(dim=2) @ _query1      # [B, Q2, Q1] [B, Q1, e]
+                query1, query2 = self.norm7(query1), self.norm8(query2)
 
-                query2 = query2 + self.cross_attention_layers_query[depth](cost_feat2, cost_feat1, _query1)   # [B, Q2, Q1] @ [B, Q1, e]
-                query2 = self.norm11(query2)
-                query2 = self.ffn_layers2[depth](query2)
-                # cost_volume2 = self.cross_attention_layers_cost_vol[depth](cost_feat2, cost_feat1, cost_volume) # [B, Q2, Q1] @ [b, Q1, Q2]
-                # query2 = query2 + cost_volume2.softmax(dim=2) @ _query1      # [B, Q1, Q2] [B, Q2, e]
-                # query2 = self.norm12(query2)
-
-            queries1.append(query1)
-            queries2.append(query2)
             contra_losses.append(self.loss_func(query1, query2))
 
         contra_losses = torch.tensor(contra_losses) # [3]
@@ -436,7 +427,6 @@ class MultiviewEncoder(nn.Module):
         keypoint_maps =[]
         for i in range(self.num_feat_levels) :
             feat1, feat2 = feats1[i], feats2[i]
-            query1, query2 = queries1[i], queries2[i]
             B, _, h, w = feat1.shape 
 
             feat1 = feat1.reshape(B, self.hidden_dim, -1).permute(0, 2, 1)   # [B, hw, e]
