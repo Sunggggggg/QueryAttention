@@ -215,8 +215,8 @@ def train(model, dataloaders, epochs, lr, epochs_til_checkpoint, model_dir, loss
                                     mask1, mask2 = mask[0], mask[1]                     
                                     mask1 = mask1 / mask1.max()
                                     mask2 = mask2 / mask2.max()
-                                    mask1[mask1<0.5] = 0.0
-                                    mask2[mask2<0.5] = 0.0
+                                    mask1[mask1<0.9] = 0.0
+                                    mask2[mask2<0.9] = 0.0
 
                                     # mask1 = np.where(mask1 >= 0.5, np.float32(1.0), np.float32(0.0))
                                     # mask2 = np.where(mask2 >= 0.5, np.float32(1.0), np.float32(0.0))
@@ -249,10 +249,6 @@ def train(model, dataloaders, epochs, lr, epochs_til_checkpoint, model_dir, loss
                                 z = [zi[:n_view] for zi in z]
 
                     model.train()
-
-                if (iters_til_checkpoint is not None) and (not total_steps % iters_til_checkpoint) and rank == 0:
-                    torch.save({'model': model.state_dict(), 'optimizer': optimizer.state_dict()},
-                               os.path.join(checkpoints_dir, 'model_epoch_%04d_iter_%06d.pth' % (epoch, total_steps)))
 
                 total_steps += 1
                 if max_steps is not None and total_steps == max_steps:

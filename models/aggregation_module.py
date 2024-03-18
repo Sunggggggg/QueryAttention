@@ -143,12 +143,27 @@ class Attention(nn.Module):
 
         if value_dim is not None :
             self.v_proj = nn.Linear(value_dim, value_dim, bias=False)
+            self.proj = nn.Linear(value_dim, value_dim, bias=False)
         else :
             self.v_proj = nn.Linear(d_model, d_model, bias=False)
+            self.proj = nn.Linear(d_model, d_model, bias=False)
 
         self.attn_drop = nn.Dropout(dropout)
-        self.proj_drop = nn.Dropout(dropout)
-        self.norm = nn.LayerNorm(d_model)
+
+        self._reset_parameters()
+
+    def _reset_parameters(self):
+        torch.manual_seed(0)
+        nn.init.xavier_uniform_(self.q_proj.weight)
+        nn.init.xavier_uniform_(self.k_proj.weight)
+        nn.init.xavier_uniform_(self.v_proj.weight)
+        nn.init.xavier_uniform_(self.proj.weight)
+        if self.k_proj.bias is not None:
+            nn.init.xavier_normal_(self.k_proj.bias)
+        if self.v_proj.bias is not None:
+            nn.init.xavier_normal_(self.v_proj.bias)
+        if self.proj.bias is not None:
+            nn.init.constant_(self.proj.bias, 0.)
 
     def with_pos_embed(self, tensor, pos=None):
         return tensor if pos is None else tensor + pos
@@ -157,23 +172,26 @@ class Attention(nn.Module):
         """
         query, key, value : [B, Q, e]
         """
-        _query = query
+        B, N_q, C_q = query.shape
+        B, N_k, C_k = key.shape
+        B, N_v, C_v = value.shape
 
         query = self.with_pos_embed(query, query_pos)
         key = self.with_pos_embed(key, key_pos)
 
-        # query = self.q_proj(query).view(B, -1, self.num_heads, C//self.num_heads) 
-        # key = self.k_proj(key).view(B, -1, self.num_heads, C//self.num_heads)      
-        # value = self.v_proj(value).view(B, -1, self.num_heads, C//self.num_heads)
-        query = self.q_proj(query)
-        key = self.k_proj(key)
-        value = self.v_proj(value)
+        query = self.q_proj(query).reshape(B, N_q, self.num_heads, C_q//self.num_heads).permute(0, 2, 1, 3) # [B, h, N, e]
+        key = self.k_proj(key).reshape(B, N_k, self.num_heads, C_k//self.num_heads).permute(0, 2, 1, 3)        
+        value = self.v_proj(value).reshape(B, N_v, self.num_heads, C_v//self.num_heads).permute(0, 2, 1, 3)
+        # query = self.q_proj(query)
+        # key = self.k_proj(key)
+        # value = self.v_proj(value)
 
-        attn = (query @ key.transpose(-2, -1)) * self.scale # [B, Q1, e] @ [B, e, Q1] 
+        attn = (query @ key.transpose(-2, -1)) * self.scale # [B, h, N, e] [B, h, e, N] = [B, h, N, N]
         attn = attn.softmax(dim=-1)
         attn = self.attn_drop(attn)
 
-        x = attn @ value            # [B, Q1, Q2] @ [B, Q2, e]  = [B, Q1, e]
+        x = (attn @ value).transpose(1, 2).reshape(B, N_q, -1)  # [B, h, N, N] @ [B, h, N, e]  = [B, h, N, e] - [B, N, h, e] 
+        x = self.proj(x)
         return x
 
 class FFNLayer(nn.Module):
@@ -288,19 +306,19 @@ class MultiviewEncoder(nn.Module):
         self.cross_attention_layers_cost_vol = nn.ModuleList()
 
         for _ in range(num_depth) :
-            self.query_activation1.append(Attention(d_model=hidden_dim, nhead=nheads, dropout=0.0))
-            self.query_activation2.append(Attention(d_model=hidden_dim, nhead=nheads, dropout=0.0))
+            self.query_activation1.append(Attention(d_model=hidden_dim, nhead=4, dropout=0.0))
+            self.query_activation2.append(Attention(d_model=hidden_dim, nhead=4, dropout=0.0))
             self.self_attention_layers_query.append(
-                Attention(d_model=hidden_dim, query_dim=hidden_dim+num_queries, key_dim=hidden_dim+num_queries, value_dim=hidden_dim, nhead=nheads, dropout=0.0)
+                Attention(d_model=hidden_dim, query_dim=hidden_dim+num_queries, key_dim=hidden_dim+num_queries, value_dim=hidden_dim, nhead=1, dropout=0.0)
                 )
             self.self_attention_layers_cost_vol.append(
-                Attention(d_model=hidden_dim, query_dim=hidden_dim+num_queries, key_dim=hidden_dim+num_queries, value_dim=num_queries, nhead=nheads, dropout=0.0)
+                Attention(d_model=hidden_dim, query_dim=hidden_dim+num_queries, key_dim=hidden_dim+num_queries, value_dim=num_queries, nhead=1, dropout=0.0)
                 )
             self.cross_attention_layers_query.append(
-                Attention(d_model=hidden_dim, query_dim=hidden_dim+num_queries, key_dim=hidden_dim+num_queries, value_dim=hidden_dim, nhead=nheads, dropout=0.0)
+                Attention(d_model=hidden_dim, query_dim=hidden_dim+num_queries, key_dim=hidden_dim+num_queries, value_dim=hidden_dim, nhead=1, dropout=0.0)
                 )
             self.cross_attention_layers_cost_vol.append(
-                Attention(d_model=hidden_dim, query_dim=hidden_dim+num_queries, key_dim=hidden_dim+num_queries, value_dim=num_queries, nhead=nheads, dropout=0.0)
+                Attention(d_model=hidden_dim, query_dim=hidden_dim+num_queries, key_dim=hidden_dim+num_queries, value_dim=num_queries, nhead=1, dropout=0.0)
                 )
             self.ffn_layers1.append(FFNLayer(d_model=hidden_dim, dim_feedforward=dim_feedforward, dropout=0.0))
             self.ffn_layers2.append(FFNLayer(d_model=hidden_dim, dim_feedforward=dim_feedforward, dropout=0.0))
@@ -321,6 +339,8 @@ class MultiviewEncoder(nn.Module):
         self.norm8 = nn.LayerNorm(hidden_dim)
         self.norm9 = nn.LayerNorm(hidden_dim)
         self.norm10 = nn.LayerNorm(hidden_dim)
+        self.norm11 = nn.LayerNorm(hidden_dim)
+        self.norm12 = nn.LayerNorm(hidden_dim)
 
     def forward(self, x, rel_transform, nviews=2):
         # 
@@ -340,19 +360,22 @@ class MultiviewEncoder(nn.Module):
         for level in range(self.num_feat_levels):
             # Feature map
             feat1, feat2 = feats1[level], feats2[level]     # [B, e, h, w]
+
+            # Query pos_embed
+            query_pos1 = query_embed_x + self.query_embed_y1.unsqueeze(0).repeat(B, 1, 1)
+            query_pos2 = query_embed_x + self.query_embed_y2.unsqueeze(0).repeat(B, 1, 1) # [B, Q, e]
+
             # Key pos_embed
             key_pos1 = self.pe_layer(feat1)
             key_pos2 = self.pe_layer(feat2)                 # [B, e, hw]
             key_pos1 = key_pos1.permute(0, 2, 1)            # [B, hw, e]
             key_pos2 = key_pos2.permute(0, 2, 1)
+            # key_pos1 = key_pos1 + self.query_embed_y1.unsqueeze(0).repeat(B, 1, 1)
+            # key_pos2 = key_pos2 + self.query_embed_y2.unsqueeze(0).repeat(B, 1, 1)
 
             feat1 = feat1.reshape(B, self.hidden_dim, -1).permute(0, 2, 1)   # [B, hw, e]
             feat2 = feat2.reshape(B, self.hidden_dim, -1).permute(0, 2, 1)   # [B, hw, e]
             
-            # Query pos_embed
-            query_pos1 = query_embed_x + self.query_embed_y1.unsqueeze(0).repeat(B, 1, 1)
-            query_pos2 = query_embed_x + self.query_embed_y2.unsqueeze(0).repeat(B, 1, 1) # [B, Q, e]
-
             for depth in range(self.num_depth):
                 # Query Activation
                 query1 = query1 + self.query_activation1[depth](query1, query1, query1, query_pos=query_embed_x)
@@ -382,7 +405,7 @@ class MultiviewEncoder(nn.Module):
                 query2 = self.norm7(query2)
                 query2 = self.ffn_layers1[depth](query2)
                 cost_volume2 = self.self_attention_layers_cost_vol[depth](cost_feat2, cost_feat2, cost_volume.permute(0, 2, 1)) # [B, Q2, Q1]
-                query2 = query2 + cost_volume2.softmax(dim=1) @ _query1     # [B, Q2, Q1] [B, Q1, e]
+                query2 = query2 + cost_volume2.softmax(dim=2) @ _query1     # [B, Q2, Q1] [B, Q1, e]
                 query2 = self.norm8(query2)
                 
                 # Inter Aggregtion
@@ -390,18 +413,25 @@ class MultiviewEncoder(nn.Module):
                 cost_feat2 = torch.cat([cost_volume.permute(0, 2, 1), query2], dim=-1)   # [B, Q2, (Q1+e)]
 
                 _query1, _query2 = query1, query2
-                query1 = self.cross_attention_layers_query[depth](cost_feat1, cost_feat2, _query2)  # []
+                query1 = query1 + self.cross_attention_layers_query[depth](cost_feat1, cost_feat2, _query2)  # [B, Q1, Q2] * [B, Q2, e]
                 query1 = self.norm9(query1)
                 query1 = self.ffn_layers2[depth](query1)
+                # cost_volume1 = self.cross_attention_layers_cost_vol[depth](cost_feat1, cost_feat2, cost_volume) # [B, Q1, Q2]
+                # query1 = query1 + cost_volume1.softmax(dim=1) @ _query2      # [B, Q1, Q2] [B, Q2, e]
+                # query1 = self.norm10(query1)
 
-                query2 = self.cross_attention_layers_query[depth](cost_feat2, cost_feat1, _query1)   # [B, Q2, e]
-                query2 = self.norm10(query2)
+                query2 = query2 + self.cross_attention_layers_query[depth](cost_feat2, cost_feat1, _query1)   # [B, Q2, Q1] @ [B, Q1, e]
+                query2 = self.norm11(query2)
                 query2 = self.ffn_layers2[depth](query2)
+                # cost_volume2 = self.cross_attention_layers_cost_vol[depth](cost_feat2, cost_feat1, cost_volume) # [B, Q2, Q1] @ [b, Q1, Q2]
+                # query2 = query2 + cost_volume2.softmax(dim=2) @ _query1      # [B, Q1, Q2] [B, Q2, e]
+                # query2 = self.norm12(query2)
 
             queries1.append(query1)
             queries2.append(query2)
             contra_losses.append(self.loss_func(query1, query2))
 
+        contra_losses = torch.tensor(contra_losses) # [3]
         # Make pixel align
         keypoint_maps =[]
         for i in range(self.num_feat_levels) :
@@ -426,7 +456,7 @@ class MultiviewEncoder(nn.Module):
         path_2 = self.refinenet2(path_3, keypoint_maps[1])
         path_1 = self.refinenet1(path_2, keypoint_maps[0])
 
-        return [path_2, path_1], contra_losses[-1]
+        return [path_2, path_1], contra_losses
     
 if __name__ == '__main__' :
     x = torch.rand((4, 3, 256, 256))
