@@ -302,9 +302,9 @@ class MultiviewEncoder(nn.Module):
         self.self_attention_layers_query = nn.ModuleList()
         self.self_attention_layers_cost_vol = nn.ModuleList()
         self.ffn_layers1 = nn.ModuleList()
-        self.ffn_layers2 = nn.ModuleList()
-        self.cross_attention_layers_query = nn.ModuleList()
-        self.cross_attention_layers_cost_vol = nn.ModuleList()
+        # self.ffn_layers2 = nn.ModuleList()
+        # self.cross_attention_layers_query = nn.ModuleList()
+        # self.cross_attention_layers_cost_vol = nn.ModuleList()
 
         for _ in range(num_depth) :
             self.query_activation1.append(Attention(d_model=hidden_dim, nhead=4, dropout=0.0))
@@ -315,14 +315,7 @@ class MultiviewEncoder(nn.Module):
             self.self_attention_layers_cost_vol.append(
                 Attention(d_model=hidden_dim, query_dim=hidden_dim+num_queries, key_dim=hidden_dim+num_queries, value_dim=num_queries, nhead=1, dropout=0.0)
                 )
-            self.cross_attention_layers_query.append(
-                Attention(d_model=hidden_dim, query_dim=hidden_dim+num_queries, key_dim=hidden_dim+num_queries, value_dim=hidden_dim, nhead=1, dropout=0.0)
-                )
-            self.cross_attention_layers_cost_vol.append(
-                Attention(d_model=hidden_dim, query_dim=hidden_dim+num_queries, key_dim=hidden_dim+num_queries, value_dim=num_queries, nhead=1, dropout=0.0)
-                )
             self.ffn_layers1.append(FFNLayer(d_model=hidden_dim, dim_feedforward=dim_feedforward, dropout=0.0))
-            self.ffn_layers2.append(FFNLayer(d_model=hidden_dim, dim_feedforward=dim_feedforward, dropout=0.0))
 
         self.loss_func = ContrastiveLoss(self.num_queries)
 
@@ -338,10 +331,10 @@ class MultiviewEncoder(nn.Module):
         self.norm6 = nn.LayerNorm(hidden_dim)
         self.norm7 = nn.LayerNorm(hidden_dim)
         self.norm8 = nn.LayerNorm(hidden_dim)
-        self.norm9 = nn.LayerNorm(hidden_dim)
-        self.norm10 = nn.LayerNorm(hidden_dim)
-        self.norm11 = nn.LayerNorm(hidden_dim)
-        self.norm12 = nn.LayerNorm(hidden_dim)
+        # self.norm9 = nn.LayerNorm(hidden_dim)
+        # self.norm10 = nn.LayerNorm(hidden_dim)
+        # self.norm11 = nn.LayerNorm(hidden_dim)
+        # self.norm12 = nn.LayerNorm(hidden_dim)
 
     def L2Norm(self, x, dim=1):
         """ Feature map normalization (SFNet)
