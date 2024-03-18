@@ -289,10 +289,12 @@ class MultiviewEncoder(nn.Module):
 
         # Learnable query
         self.query_feat = nn.Parameter(torch.rand(num_queries, hidden_dim), requires_grad=True) 
-        self.query_embed_x = nn.Parameter(torch.rand(num_queries), requires_grad=True) 
-        # 
+        self.query_embed_x = nn.Parameter(torch.rand(num_queries), requires_grad=True)
         self.query_embed_y1 = nn.Parameter(torch.rand(num_queries, hidden_dim), requires_grad=True)
         self.query_embed_y2 = nn.Parameter(torch.rand(num_queries, hidden_dim), requires_grad=True)
+
+        self.cost_embed_x = nn.Parameter(torch.rand(1, num_queries, num_queries+hidden_dim), requires_grad=True)# [1, Q, Q+e]
+        self.cost_embed_y = nn.Parameter(torch.rand(1, num_queries, num_queries+hidden_dim), requires_grad=True)# [1, Q, Q+e]
 
         # Block
         self.query_activation1 = nn.ModuleList()
@@ -362,6 +364,10 @@ class MultiviewEncoder(nn.Module):
         query_embed_x = self.query_embed_x.view(1, -1, 1)               # [1, Q, 1]
         query1, query2 = init_query, init_query
 
+        # Query pos
+        query_pos1 = query_embed_x + self.query_embed_y1.unsqueeze(0)     # [1, Q, 1]+[1, Q, e] = [1, Q1, e]
+        query_pos2 = query_embed_x + self.query_embed_y2.unsqueeze(0)     # [1, Q2, e]
+
         # Multiscale feature map
         queries1, queries2, contra_losses = [], [], []
         feats1, feats2 = self.backbone(img1), self.backbone(img2)           # [layer3, layer2, layer1]
@@ -369,15 +375,6 @@ class MultiviewEncoder(nn.Module):
             # Feature map
             feat1, feat2 = feats1[level], feats2[level]     # [B, e, h, w]
             feat1, feat2 = self.L2Norm(feat1), self.L2Norm(feat2)
-            # Query pos_embed
-            query_pos1 = query_embed_x + self.query_embed_y1.unsqueeze(0)  
-            query_pos2 = query_embed_x + self.query_embed_y2.unsqueeze(0)   # [1, Q, e]
-
-            # Cost vol
-            cost_pos_embed = query_pos1.unsqueeze(2).repeat(1, 1, self.num_queries, 1) \
-                + query_pos2.unsqueeze(1).repeat(1, self.num_queries, 1, 1)  # [1, Q1, Q2, e]
-            cost_pos_embed1 = cost_pos_embed.flatten(-2)                            # [1, Q1, Q2+e]
-            cost_pos_embed2 = cost_pos_embed.permute(0, 2, 1, 3).flatten(-2)        # [1, Q2, Q1+e]
 
             # Key pos_embed
             key_pos1 = self.pe_layer(feat1)
@@ -404,13 +401,13 @@ class MultiviewEncoder(nn.Module):
                 # Intra Aggreagation
                 _query1, _query2 = query1, query2
                 query1 = query1 + self.self_attention_layers_query[depth](cost_feat1, cost_feat1, _query1, 
-                                                                      query_pos=cost_pos_embed1, key_pos=cost_pos_embed1)
+                                                                      query_pos=self.cost_embed_x, key_pos=self.cost_embed_x)
                 cost_volume1 = self.self_attention_layers_cost_vol[depth](cost_feat1, cost_feat1, cost_volume,
-                                                                      query_pos=cost_pos_embed1, key_pos=cost_pos_embed1)   # [B, Q1, Q2]
+                                                                      query_pos=self.cost_embed_x, key_pos=self.cost_embed_x)   # [B, Q1, Q2]
                 query2 = query2 + self.self_attention_layers_query[depth](cost_feat2, cost_feat2, _query2,
-                                                                      query_pos=cost_pos_embed2, key_pos=cost_pos_embed2)   # [B, Q2, e]
+                                                                      query_pos=self.cost_embed_y, key_pos=self.cost_embed_y)   # [B, Q2, e]
                 cost_volume2 = self.self_attention_layers_cost_vol[depth](cost_feat2, cost_feat2, cost_volume.permute(0, 2, 1),
-                                                                      query_pos=cost_pos_embed2, key_pos=cost_pos_embed2)   # [B, Q2, Q1]
+                                                                      query_pos=self.cost_embed_y, key_pos=self.cost_embed_y)   # [B, Q2, Q1]
                 query1, query2 = self.norm5(query1), self.norm6(query2)
                 query1 = self.ffn_layers1[depth](query1)
                 query2 = self.ffn_layers1[depth](query2)
