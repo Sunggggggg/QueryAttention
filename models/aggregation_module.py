@@ -311,7 +311,6 @@ class MultiviewEncoder(nn.Module):
         self.refinenet2 = FeatureFusionBlock_custom(num_queries, nn.ReLU(False), deconv=False, bn=False, expand=False, align_corners=True)
         self.refinenet3 = FeatureFusionBlock_custom(num_queries, nn.ReLU(False), deconv=False, bn=False, expand=False, align_corners=True)
 
-
         self.norm1 = nn.LayerNorm(hidden_dim)
         self.norm2 = nn.LayerNorm(hidden_dim)
         self.norm3 = nn.LayerNorm(hidden_dim)
@@ -372,14 +371,14 @@ class MultiviewEncoder(nn.Module):
                 cost_feat2 = torch.cat([cost_volume.permute(0, 2, 1), query2], dim=-1)   # [B, Q2, (Q1+e)]
 
                 _query1, _query2 = query1, query2
-                query1 = query1 + self.self_attention_layers_query[depth](cost_feat1, cost_feat1, query1)
+                query1 = query1 + self.self_attention_layers_query[depth](cost_feat1, cost_feat1, _query1)
                 query1 = self.norm5(query1)
                 query1 = self.ffn_layers1[depth](query1)
                 cost_volume1 = self.self_attention_layers_cost_vol[depth](cost_feat1, cost_feat1, cost_volume) # [B, Q1, Q2]
                 query1 = query1 + cost_volume1.softmax(dim=1) @ _query2      # [B, Q1, Q2] [B, Q2, e]
                 query1 = self.norm6(query1)
 
-                query2 = query2 + self.self_attention_layers_query[depth](cost_feat2, cost_feat2, query2)   # [B, Q2, e]
+                query2 = query2 + self.self_attention_layers_query[depth](cost_feat2, cost_feat2, _query2)   # [B, Q2, e]
                 query2 = self.norm7(query2)
                 query2 = self.ffn_layers1[depth](query2)
                 cost_volume2 = self.self_attention_layers_cost_vol[depth](cost_feat2, cost_feat2, cost_volume.permute(0, 2, 1)) # [B, Q2, Q1]
