@@ -431,6 +431,7 @@ class MultiviewEncoder(nn.Module):
 
             keypoint_maps.append(keypoint_map)
 
+        self.query1, self.query2 = query1, query2
         assert self.num_feat_levels == 3    # Fix 3 scale
         path_3 = self.refinenet3(keypoint_maps[2])
         path_2 = self.refinenet2(path_3, keypoint_maps[1])
