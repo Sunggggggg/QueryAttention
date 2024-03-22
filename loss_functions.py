@@ -4,6 +4,7 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 import numpy as np
+from sklearn.metrics import normalized_mutual_info_score
 
 class GaussianSmoothing(nn.Module):
     """
@@ -70,19 +71,20 @@ class GaussianSmoothing(nn.Module):
         """
         return self.conv(input, weight=self.weight, groups=self.groups)
 
-class ContrastiveLoss(torch.nn.Module):
+class ContrastiveLoss(nn.Module):
     def __init__(self, num_queries=100):
         super(ContrastiveLoss, self).__init__()
+        self.mse = nn.MSELoss(reduction='sum')
         self.num_queries = num_queries
-        self.labels = torch.arange(0, num_queries)
+        self.labels = torch.eye(num_queries)    #
 
     def forward(self, query1, query2, labels=None):
         B = query1.shape[0]
-        labels = self.labels.unsqueeze(0).repeat(B, 1)
+        labels = self.labels.unsqueeze(0).repeat(B, 1, 1)   # [B, Q, Q]
         labels = labels.to(query1.device)
 
-        query_sim = query1 @ query2.permute(0, 2, 1)
-        loss = F.cross_entropy(query_sim, labels)
+        query_sim = query1 @ query2.permute(0, 2, 1)    #[B, Q1, Q2]
+        loss = self.mse(query_sim, labels)
         
         return loss
 
