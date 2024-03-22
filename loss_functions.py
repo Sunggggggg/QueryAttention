@@ -99,7 +99,7 @@ class ContrastiveLoss(nn.Module):
         
         rand_idx = self.random_idx()
         select_query = init_query[:, rand_idx, :]       # [B, 2, e]
-        loss2 = torch.stack([self.cos_sim(select_query[b, 0:1], select_query[b, 1:2]) for b in range(B)]).mean()
+        loss2 = torch.stack([self.cos_sim(select_query[b, 0:1], select_query[b, 1:2]) for b in range(B)]).mean() / 1000
         return loss1 + loss2
 
 def image_loss(model_out, gt, mask=None):
