@@ -1,10 +1,11 @@
 import math
 import numbers
+import random
 import torch
 from torch import nn
 from torch.nn import functional as F
 import numpy as np
-from sklearn.metrics import normalized_mutual_info_score
+from torchmetrics.clustering import MutualInfoScore
 
 class GaussianSmoothing(nn.Module):
     """
@@ -74,19 +75,34 @@ class GaussianSmoothing(nn.Module):
 class ContrastiveLoss(nn.Module):
     def __init__(self, num_queries=100):
         super(ContrastiveLoss, self).__init__()
-        self.mse = nn.MSELoss(reduction='sum')
+        self.mse = nn.MSELoss(reduction='mean')
         self.num_queries = num_queries
         self.labels = torch.eye(num_queries)    #
 
-    def forward(self, query1, query2, labels=None):
+        self.mi_score = MutualInfoScore()
+
+    def random_idx(self):
+        idx_list = []
+        for _ in range(2):
+            idx = random.randint(0, self.num_queries-1)
+            while idx in idx_list:
+                idx = random.randint(0, self.num_queries-1)
+            idx_list.append(idx)
+        idx_list = np.array(idx_list)
+        return idx_list
+
+    def forward(self, query1, query2, init_query):
         B = query1.shape[0]
         labels = self.labels.unsqueeze(0).repeat(B, 1, 1)   # [B, Q, Q]
         labels = labels.to(query1.device)
 
         query_sim = query1 @ query2.permute(0, 2, 1)    #[B, Q1, Q2]
-        loss = self.mse(query_sim, labels)
+        loss1 = self.mse(query_sim, labels)
         
-        return loss
+        rand_idx = self.random_idx()
+        select_query = init_query[:, rand_idx, :]       # [B, 2, e]
+        loss2 = torch.mean([self.mi_score(select_query[b, 0], select_query[b, 1]) for b in range(B)])
+        return loss1 + loss2
 
 def image_loss(model_out, gt, mask=None):
     gt_rgb = gt['rgb']

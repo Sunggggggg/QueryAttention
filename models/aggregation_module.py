@@ -289,7 +289,7 @@ class MultiviewEncoder(nn.Module):
 
         # Learnable query
         self.query_feat = nn.Parameter(torch.rand(num_queries, hidden_dim), requires_grad=True) 
-        self.query_embed_x = nn.Parameter(torch.rand(num_queries), requires_grad=True)
+        self.query_embed_x = nn.Parameter(torch.rand(num_queries, hidden_dim), requires_grad=True)
         self.query_embed_y1 = nn.Parameter(torch.rand(num_queries, hidden_dim), requires_grad=True)
         self.query_embed_y2 = nn.Parameter(torch.rand(num_queries, hidden_dim), requires_grad=True)
 
@@ -301,10 +301,7 @@ class MultiviewEncoder(nn.Module):
         self.query_activation2 = nn.ModuleList()
         self.self_attention_layers_query = nn.ModuleList()
         self.self_attention_layers_cost_vol = nn.ModuleList()
-        self.ffn_layers1 = nn.ModuleList()
-        # self.ffn_layers2 = nn.ModuleList()
-        # self.cross_attention_layers_query = nn.ModuleList()
-        # self.cross_attention_layers_cost_vol = nn.ModuleList()
+        self.ffn_layers = nn.ModuleList()
 
         for _ in range(num_depth) :
             self.query_activation1.append(Attention(d_model=hidden_dim, nhead=4, dropout=0.0))
@@ -315,7 +312,7 @@ class MultiviewEncoder(nn.Module):
             self.self_attention_layers_cost_vol.append(
                 Attention(d_model=hidden_dim, query_dim=hidden_dim+num_queries, key_dim=hidden_dim+num_queries, value_dim=num_queries, nhead=1, dropout=0.0)
                 )
-            self.ffn_layers1.append(FFNLayer(d_model=hidden_dim, dim_feedforward=dim_feedforward, dropout=0.0))
+            self.ffn_layers.append(FFNLayer(d_model=hidden_dim, dim_feedforward=dim_feedforward, dropout=0.0))
 
         self.loss_func = ContrastiveLoss(self.num_queries)
 
@@ -336,6 +333,20 @@ class MultiviewEncoder(nn.Module):
         # self.norm11 = nn.LayerNorm(hidden_dim)
         # self.norm12 = nn.LayerNorm(hidden_dim)
 
+    def matual_nn_filter(self, correlation_matrix) :
+        """Mutual nearest neighbor filtering (Rocco et al. NeurIPS'18)
+        correlation_matrix : [B, Q1, Q2]
+        """
+        corr_src_max = torch.max(correlation_matrix, dim=2, keepdim=True)[0]
+        corr_trg_max = torch.max(correlation_matrix, dim=1, keepdim=True)[0]
+        corr_src_max[corr_src_max == 0] += 1e-30
+        corr_trg_max[corr_trg_max == 0] += 1e-30
+
+        corr_src = correlation_matrix / corr_src_max
+        corr_trg = correlation_matrix / corr_trg_max
+
+        return correlation_matrix * (corr_src * corr_trg)
+
     def L2Norm(self, x, dim=1):
         """ Feature map normalization (SFNet)
         x : [B, C, H, W]
@@ -354,15 +365,15 @@ class MultiviewEncoder(nn.Module):
         # Learnable query init
         B = x.shape[0]
         init_query = self.query_feat.unsqueeze(0).repeat(B, 1, 1)       # [B, Q, e]
-        query_embed_x = self.query_embed_x.view(1, -1, 1)               # [1, Q, 1]
+        query_embed_x = self.query_embed_x.unsqueeze(0)                 # [1, Q, e]
         query1, query2 = init_query, init_query
 
         # Query pos
-        query_pos1 = query_embed_x + self.query_embed_y1.unsqueeze(0)     # [1, Q, 1]+[1, Q, e] = [1, Q1, e]
+        query_pos1 = query_embed_x + self.query_embed_y1.unsqueeze(0)     # [1, Q, e]+[1, Q, e] = [1, Q1, e]
         query_pos2 = query_embed_x + self.query_embed_y2.unsqueeze(0)     # [1, Q2, e]
 
         # Multiscale feature map
-        queries1, queries2, contra_losses = [], [], []
+        contra_losses = []
         feats1, feats2 = self.backbone(img1), self.backbone(img2)           # [layer3, layer2, layer1]
         for level in range(self.num_feat_levels):
             # Feature map
@@ -402,15 +413,16 @@ class MultiviewEncoder(nn.Module):
                 cost_volume2 = self.self_attention_layers_cost_vol[depth](cost_feat2, cost_feat2, cost_volume.permute(0, 2, 1),
                                                                       query_pos=self.cost_embed_y, key_pos=self.cost_embed_y)   # [B, Q2, Q1]
                 query1, query2 = self.norm5(query1), self.norm6(query2)
-                query1 = self.ffn_layers1[depth](query1)
-                query2 = self.ffn_layers1[depth](query2)
+                query1 = self.ffn_layers[depth](query1)
+                query2 = self.ffn_layers[depth](query2)
 
-                cost_volume = cost_volume1 + cost_volume2.permute(0, 2, 1)   # Refine cost vol
-                query1 = query1 + cost_volume.softmax(dim=1) @ _query2      # [B, Q1, Q2] [B, Q2, e]
-                query2 = query2 + cost_volume.softmax(dim=2) @ _query1      # [B, Q2, Q1] [B, Q1, e]
+                cost_volume = cost_volume + cost_volume1 + cost_volume2.permute(0, 2, 1)   # Refine cost vol
+                cost_volume = self.matual_nn_filter(cost_volume)
+                query1 = query1 + cost_volume @ _query2                  # [B, Q1, Q2] [B, Q2, e]
+                query2 = query2 + cost_volume.permute(0, 2, 1) @ _query1 # [B, Q2, Q1] [B, Q1, e]
                 query1, query2 = self.norm7(query1), self.norm8(query2)
 
-            contra_losses.append(self.loss_func(query1, query2))
+            contra_losses.append(self.loss_func(query1, query2, init_query))
 
         contra_losses = torch.tensor(contra_losses) # [3]
         # Make pixel align
