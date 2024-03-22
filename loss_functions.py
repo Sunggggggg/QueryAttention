@@ -5,7 +5,6 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 import numpy as np
-from torchmetrics.clustering import MutualInfoScore
 
 class GaussianSmoothing(nn.Module):
     """
@@ -78,8 +77,7 @@ class ContrastiveLoss(nn.Module):
         self.mse = nn.MSELoss(reduction='mean')
         self.num_queries = num_queries
         self.labels = torch.eye(num_queries)    #
-
-        self.mi_score = MutualInfoScore()
+        self.cos_sim = nn.CosineSimilarity()
 
     def random_idx(self):
         idx_list = []
@@ -101,7 +99,7 @@ class ContrastiveLoss(nn.Module):
         
         rand_idx = self.random_idx()
         select_query = init_query[:, rand_idx, :]       # [B, 2, e]
-        loss2 = torch.mean([self.mi_score(select_query[b, 0], select_query[b, 1]) for b in range(B)])
+        loss2 = torch.mean([self.cos_sim(select_query[b, 0:1], select_query[b, 1:2]) for b in range(B)])
         return loss1 + loss2
 
 def image_loss(model_out, gt, mask=None):
