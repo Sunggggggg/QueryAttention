@@ -31,6 +31,15 @@ def multigpu_train(gpu, opt):
 
     torch.cuda.set_device(gpu)
 
+    #
+    basedir = os.path.join(opt.experiment_name)
+    os.makedirs(basedir, exist_ok=True)
+    f = os.path.join(basedir, 'args.txt')
+    with open(f, 'w') as file:
+        for arg in vars(opt):
+            attr = getattr(opt, arg)
+            file.write('{} = {}\n'.format(arg, attr))
+
     def create_dataloader_callback(sidelength, batch_size, query_sparsity):
         train_dataset = RealEstate10k(img_root="/home/dev4/data/SKY/datasets/data_download/realestate/train",
                                      pose_root="/home/dev4/data/SKY/datasets/poses/realestate/train.mat",
