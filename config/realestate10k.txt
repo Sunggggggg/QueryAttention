@@ -1,0 +1,4 @@
+num_queries = 64
+lpips = True
+depth = True
+contra = True
