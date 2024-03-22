@@ -96,10 +96,11 @@ class ContrastiveLoss(nn.Module):
 
         query_sim = query1 @ query2.permute(0, 2, 1)    #[B, Q1, Q2]
         loss1 = self.mse(query_sim, labels)
+        loss1 = loss1/self.num_queries**self.num_queries
         
         rand_idx = self.random_idx()
         select_query = init_query[:, rand_idx, :]       # [B, 2, e]
-        loss2 = torch.stack([self.cos_sim(select_query[b, 0:1], select_query[b, 1:2]) for b in range(B)]).mean() / 1000
+        loss2 = torch.stack([self.cos_sim(select_query[b, 0:1], select_query[b, 1:2]) for b in range(B)]).mean()
         return loss1 + loss2
 
 def image_loss(model_out, gt, mask=None):
