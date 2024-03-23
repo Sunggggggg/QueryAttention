@@ -41,7 +41,10 @@ if __name__ == "__main__" :
                                      no_sample=False, 
                                      no_latent_concat=False, 
                                      no_high_freq=False, 
-                                     model='query', n_view=2)
+                                     model='query', 
+                                     n_view=2,
+                                     num_queries=args.num_queries
+                                     )
     
     backbone = model.encoder.backbone
 
