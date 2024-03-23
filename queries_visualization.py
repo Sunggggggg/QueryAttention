@@ -146,15 +146,15 @@ if __name__ == "__main__" :
 
             high_feat = z[1]
             for k in range(high_feat.shape[1]) :
-                # query1, query2 = model.encoder.query1, model.encoder.query2 # [1, 100, 256]
-                # tsne = TSNE(n_components=2, random_state=1)
-                # query1_tsne = tsne.fit_transform(query1)
-                # query2_tsne = tsne.fit_transform(query2)
-                # color = np.arange(query2.shape[1])
-                # plt.scatter(query1_tsne[0, :, 0], query1_tsne[0, :, 1], c=color)
-                # writer.add_figure(f'query1_embedding{k}', plt.gcf(), total_iter)
-                # plt.scatter(query2_tsne[0, :, 0], query2_tsne[0, :, 1], c=color)
-                # writer.add_figure(f'query2_embedding{k}', plt.gcf(), total_iter)
+                query1, query2 = model.encoder.query1, model.encoder.query2 # [1, 100, 256]
+                tsne = TSNE(n_components=2, random_state=1)
+                query1_tsne = tsne.fit_transform(query1[0])
+                query2_tsne = tsne.fit_transform(query2[0])
+                color = np.arange(query2.shape[1])
+                plt.scatter(query1_tsne[:, 0], query1_tsne[:, 1], c=color)
+                writer.add_figure(f'query1_embedding{k}', plt.gcf(), total_iter)
+                plt.scatter(query2_tsne[:, 0], query2_tsne[:, 1], c=color)
+                writer.add_figure(f'query2_embedding{k}', plt.gcf(), total_iter)
 
                 featmaps = high_feat[:, k:k+1]                      # [2, 1, H, W]
                 mask = featmaps.permute(0, 2, 3, 1).cpu().numpy()   # [2, H, W, 1]
