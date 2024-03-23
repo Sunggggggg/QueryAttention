@@ -120,15 +120,15 @@ if __name__ == "__main__" :
                 img.sub_(low).div_(max(high - low, 1e-5))
                 return img
             
-            context_images = torch.stack([norm(context) for context in context_images])
+            context_images = torch.stack([norm(context) for context in context_images]) # [2, H, W, 3]
 
-            print(context_images.shape)
             feat1, feat2 = backbone(_context_images[0:1]), backbone(_context_images[1:2]) 
             feat1, feat2 = feat1[0], feat2[0]
             for k in range(feat1.shape[1]):
-                print(feat1[:, k:k+1].shape)
+                f1, f2 = feat1[:, k:k+1], feat2[:, k:k+1] # [1, 1, h, w]
+                _f = torch.stack([f1, f2], dim=0).permute(0, 3, 1, 2)
                 writer.add_image(f"feature Maps{k}", 
-                    torchvision.utils.make_grid(torch.stack([feat1[:, k:k+1], feat2[:, k:k+1]]), scale_each=False, normalize=True).cpu().numpy(), total_iter)
+                    torchvision.utils.make_grid(_f, scale_each=False, normalize=True).cpu().numpy(), total_iter)
 
 
             high_feat = z[1]
