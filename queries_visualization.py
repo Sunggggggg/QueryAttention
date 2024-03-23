@@ -152,9 +152,8 @@ if __name__ == "__main__" :
                 query2_tsne = tsne.fit_transform(query2[0].cpu().numpy())
                 color = np.arange(query2.shape[1])
                 plt.scatter(query1_tsne[:, 0], query1_tsne[:, 1], c=color)
-                writer.add_figure(f'query1_embedding{k}', plt.gcf(), total_iter)
                 plt.scatter(query2_tsne[:, 0], query2_tsne[:, 1], c=color)
-                writer.add_figure(f'query2_embedding{k}', plt.gcf(), total_iter)
+                writer.add_figure(f'query_embedding{k}', plt.gcf(), total_iter)
 
                 featmaps = high_feat[:, k:k+1]                      # [2, 1, H, W]
                 mask = featmaps.permute(0, 2, 3, 1).cpu().numpy()   # [2, H, W, 1]
