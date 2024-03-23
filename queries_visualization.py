@@ -126,9 +126,22 @@ if __name__ == "__main__" :
             feat1, feat2 = feat1[0], feat2[0]
             for k in range(feat1.shape[1]):
                 f1, f2 = feat1[:, k:k+1], feat2[:, k:k+1] # [1, 1, h, w]
-                _f = torch.cat([f1, f2], dim=0).permute(0, 2, 3, 1)  # [2, 1, h, w] -> 
-                writer.add_image(f"feature Maps{k}", 
-                    torchvision.utils.make_grid(_f, scale_each=False, normalize=True).cpu().numpy(), total_iter)
+                _f = torch.cat([f1, f2], dim=0)             # [2, 1, h, w]
+                mask = _f.permute(0, 2, 3, 1).cpu().numpy() # [2, h, w, 1]
+                mask1, mask2 = mask[0], mask[1]                     
+                mask1 = mask1 / mask1.max()
+                mask2 = mask2 / mask2.max()
+
+                mask1 = np.uint8(255 * mask1)
+                mask2 = np.uint8(255 * mask2)
+
+                mask1 = cv2.applyColorMap(mask1, cv2.COLORMAP_JET)  # [H, W, 3]
+                mask2 = cv2.applyColorMap(mask2, cv2.COLORMAP_JET)  # [H, W, 3] 
+                cam = np.stack([mask1, mask2], axis=0)               # [2, H, W, 3]
+
+                cam = cam.transpose(0, -1, 1, 2)
+                writer.add_image(f"Feature Maps{k}", 
+                                torchvision.utils.make_grid(torch.tensor(cam), scale_each=False), total_iter)
 
 
             high_feat = z[1]
