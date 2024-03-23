@@ -126,8 +126,7 @@ if __name__ == "__main__" :
             feat1, feat2 = feat1[0], feat2[0]
             for k in range(feat1.shape[1]):
                 f1, f2 = feat1[:, k:k+1], feat2[:, k:k+1] # [1, 1, h, w]
-                _f = torch.stack([f1, f2], dim=0)
-                print(_f.shape)
+                _f = torch.cat([f1, f2], dim=0).permute(0, 2, 3, 1)  # [2, 1, h, w] -> 
                 writer.add_image(f"feature Maps{k}", 
                     torchvision.utils.make_grid(_f, scale_each=False, normalize=True).cpu().numpy(), total_iter)
 
