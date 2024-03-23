@@ -122,9 +122,11 @@ if __name__ == "__main__" :
             
             context_images = torch.stack([norm(context) for context in context_images])
 
-            feat1, feat2 = backbone(context_images[0:1]), backbone(context_images[1:2]) 
+            print(context_images.shape)
+            feat1, feat2 = backbone(_context_images[0:1]), backbone(_context_images[1:2]) 
             feat1, feat2 = feat1[0], feat2[0]
             for k in range(feat1.shape[1]):
+                print(feat1[:, k:k+1].shape)
                 writer.add_image(f"feature Maps{k}", 
                     torchvision.utils.make_grid(torch.stack([feat1[:, k:k+1], feat2[:, k:k+1]]), scale_each=False, normalize=True).cpu().numpy(), total_iter)
 
