@@ -145,9 +145,9 @@ if __name__ == "__main__" :
 
 
             high_feat = z[1]
+            tsne = TSNE(n_components=2, random_state=1)
             for k in range(high_feat.shape[1]) :
                 query1, query2 = model.encoder.query1, model.encoder.query2 # [1, 100, 256]
-                tsne = TSNE(n_components=2, random_state=1)
                 query1_tsne = tsne.fit_transform(query1[0].cpu().numpy())
                 query2_tsne = tsne.fit_transform(query2[0].cpu().numpy())
                 color = np.arange(query2.shape[1])

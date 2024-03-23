@@ -32,7 +32,7 @@ def multigpu_train(gpu, opt):
     torch.cuda.set_device(gpu)
 
     #
-    basedir = os.path.join(opt.experiment_name)
+    basedir = os.path.join(opt.logging_root, opt.experiment_name)
     os.makedirs(basedir, exist_ok=True)
     f = os.path.join(basedir, 'args.txt')
     with open(f, 'w') as file:
