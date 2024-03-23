@@ -43,7 +43,8 @@ if __name__ == "__main__" :
                                      no_high_freq=False, 
                                      model='query', n_view=2)
     
-    
+    backbone = model.encoder.backbone
+
     weight_path = os.path.join(args.logging_root, 'checkpoints', 'model_current.pth')
     weights = torch.load(weight_path, map_location=torch.device('cpu'))
     model.load_state_dict(weights['model'], strict=False)
@@ -53,7 +54,6 @@ if __name__ == "__main__" :
     query_featmap_path = os.path.join(args.logging_root, 'QueryAttention')
     os.makedirs(query_featmap_path, exist_ok=True)
     writer = SummaryWriter(query_featmap_path, flush_secs=10)
-
 
     total_iter = 0
     with torch.no_grad():
@@ -95,7 +95,7 @@ if __name__ == "__main__" :
             rgb = ((rgb + 1) * 0.5).detach() * valid_mask + 0.5 * (1 - valid_mask) * torch.ones_like(rgb)
             rgb = torch.clamp(rgb, -1, 1)
             
-            writer.add_image("Prediction",torchvision.utils.make_grid(rgb[None, ...].permute(0, 3, 1, 2), scale_each=False)
+            writer.add_image("Prediction", torchvision.utils.make_grid(rgb[None, ...].permute(0, 3, 1, 2), scale_each=False)
                               , total_iter)
 
             # 
@@ -119,6 +119,13 @@ if __name__ == "__main__" :
             
             context_images = torch.stack([norm(context) for context in context_images])
 
+            feat1, feat2 = backbone(_context_images)
+            feat1, feat2 = feat1[0], feat2[0]
+            for k in range(feat1.shape[1]):
+                writer.add_image(f"feature Maps{k}", 
+                    torchvision.utils.make_grid(torch.stack([feat1[:, k:k+1], feat2[:, k:k+1]]), scale_each=False, normalize=True).cpu().numpy(), total_iter)
+
+
             high_feat = z[1]
             for k in range(high_feat.shape[1]) :
                 query1, query2 = model.encoder.query1, model.encoder.query2 # [1, 100, 256]
@@ -136,8 +143,6 @@ if __name__ == "__main__" :
                 mask1, mask2 = mask[0], mask[1]                     
                 mask1 = mask1 / mask1.max()
                 mask2 = mask2 / mask2.max()
-                mask1[mask1<0.5] = 0.0
-                mask2[mask2<0.5] = 0.0
 
                 # mask1 = np.where(mask1 >= 0.5, np.float32(1.0), np.float32(0.0))
                 # mask2 = np.where(mask2 >= 0.5, np.float32(1.0), np.float32(0.0))
