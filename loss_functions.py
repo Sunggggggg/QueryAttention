@@ -101,8 +101,9 @@ class ContrastiveLoss(nn.Module):
         
         # Entropy
         vector_min = torch.min(init_query, dim=2, keepdim=True)[0]
-        vector_max = torch.max(init_query, dim=2, keepdim=True)[0]
-        probabilities = (init_query + vector_min)/vector_max
+        probabilities = (init_query + vector_min)
+        vector_max = torch.max(probabilities, dim=2, keepdim=True)[0]
+        probabilities = probabilities / (vector_max + 1e-6)
         entropy = -torch.sum(probabilities* torch.log(probabilities + 1e-10), dim=-1)
         loss2 = entropy.mean()
         return loss1 + loss2
