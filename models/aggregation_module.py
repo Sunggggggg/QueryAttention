@@ -366,6 +366,7 @@ class MultiviewEncoder(nn.Module):
         B = x.shape[0]
         init_query = self.query_feat.unsqueeze(0).repeat(B, 1, 1)       # [B, Q, e]
         query_embed_x = self.query_embed_x.unsqueeze(0)                 # [1, Q, e]
+        init_query = self.L2Norm(init_query)
         query1, query2 = init_query, init_query
 
         # Query pos
