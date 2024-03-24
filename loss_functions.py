@@ -100,8 +100,10 @@ class ContrastiveLoss(nn.Module):
         loss1 /= self.num_queries**2
         
         # Entropy
-        probabilites = F.softmax(init_query, dim=-1)
-        entropy = -torch.sum(probabilites* torch.log(probabilites + 1e-10), dim=-1)
+        vector_min = torch.min(init_query, dim=2, keepdim=True)[0]
+        vector_max = torch.max(init_query, dim=2, keepdim=True)[0]
+        probabilities = (init_query + vector_min)/vector_max
+        entropy = -torch.sum(probabilities* torch.log(probabilities + 1e-10), dim=-1)
         loss2 = entropy.mean()
         return loss1 + loss2
 
