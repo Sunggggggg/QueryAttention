@@ -94,13 +94,15 @@ class ContrastiveLoss(nn.Module):
         labels = self.labels.unsqueeze(0).repeat(B, 1, 1)   # [B, Q, Q]
         labels = labels.to(query1.device)
 
+        # Matching
         query_sim = query1 @ query2.permute(0, 2, 1)    #[B, Q1, Q2]
         loss1 = self.mse(query_sim, labels)
         loss1 /= self.num_queries**2
         
-        rand_idx = self.random_idx()
-        select_query = init_query[:, rand_idx, :]       # [B, 2, e]
-        loss2 = torch.stack([self.cos_sim(select_query[b, 0:1], select_query[b, 1:2]) for b in range(B)]).mean()
+        # Entropy
+        probabilites = F.softmax(init_query, dim=-1)
+        entropy = -torch.sum(probabilites* torch.log(probabilites + 1e-10), dim=-1)
+        loss2 = entropy.mean()
         return loss1 + loss2
 
 def image_loss(model_out, gt, mask=None):
