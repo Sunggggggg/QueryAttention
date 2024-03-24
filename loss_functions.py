@@ -150,7 +150,8 @@ class ContrastiveLoss(nn.Module):
         # entropy = -torch.sum(probabilities* torch.log(probabilities + 1e-10), dim=-1)
         # loss2 = entropy.mean()
         sel_idx = self.random_idx()
-        sel_query = init_query[:, sel_idx] # [B, 2, 256]
+        probabilities = F.softmax(init_query, dim=-1)
+        sel_query = probabilities[:, sel_idx] # [B, 2, 256]
         sel_query = sel_query.unsqueeze(0)
         loss2 = self.mi_score(sel_query[:, :, 0:1], sel_query[:, :, 1:2])
         return loss1 + loss2
