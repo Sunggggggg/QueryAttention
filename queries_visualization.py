@@ -34,7 +34,7 @@ if __name__ == "__main__" :
     val_dataset = RealEstate10k(img_root="/home/dev4/data/SKY/datasets/data_download/realestate/test",
                                 pose_root="/home/dev4/data/SKY/datasets/poses/realestate/test.mat",
                                 num_ctxt_views=2, num_query_views=1, augment=False)
-    val_dataloader = DataLoader(val_dataset, batch_size=1, shuffle=True, 
+    val_dataloader = DataLoader(val_dataset, batch_size=1, shuffle=False, 
                             drop_last=True, num_workers=4, pin_memory=False, worker_init_fn=worker_init_fn)
     #Model
     model = CrossAttentionRenderer(no_multiview=False, 
