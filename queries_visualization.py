@@ -131,7 +131,7 @@ if __name__ == "__main__" :
             color = np.arange(query2.shape[1])
             plt.scatter(query1_tsne[:, 0], query1_tsne[:, 1], c=color)
             plt.scatter(query2_tsne[:, 0], query2_tsne[:, 1], c=color)
-            writer.add_figure(f'query_embedding{k}', plt.gcf(), total_iter)
+            writer.add_figure('query_embedding', plt.gcf(), total_iter)
             plt.close()
             for k in range(high_feat.shape[1]) :
                 featmaps = high_feat[:, k:k+1]                      # [2, 1, H, W]
