@@ -5,6 +5,7 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 import numpy as np
+from rmi import RMILoss
 
 class GaussianSmoothing(nn.Module):
     """
@@ -71,6 +72,48 @@ class GaussianSmoothing(nn.Module):
         """
         return self.conv(input, weight=self.weight, groups=self.groups)
 
+class SimCLR_Loss(nn.Module):
+    def __init__(self, batch_size, temperature):
+        super().__init__()
+        self.batch_size = batch_size
+        self.temperature = temperature
+
+        self.mask = self.mask_correlated_samples(batch_size)
+        self.criterion = nn.CrossEntropyLoss(reduction="sum")
+        self.similarity_f = nn.CosineSimilarity(dim=2)
+
+    def mask_correlated_samples(self, batch_size):
+        N = 2 * batch_size
+        mask = torch.ones((N, N), dtype=bool)
+        mask = mask.fill_diagonal_(0)
+        
+        for i in range(batch_size):
+            mask[i, batch_size + i] = 0
+            mask[batch_size + i, i] = 0
+        return mask
+
+    def forward(self, z_i, z_j):
+
+        N = 2 * self.batch_size
+
+        z = torch.cat((z_i, z_j), dim=0)
+
+        sim = self.similarity_f(z.unsqueeze(1), z.unsqueeze(0)) / self.temperature
+
+        sim_i_j = torch.diag(sim, self.batch_size)
+        sim_j_i = torch.diag(sim, -self.batch_size)
+        
+        positive_samples = torch.cat((sim_i_j, sim_j_i), dim=0).reshape(N, 1)
+        negative_samples = sim[self.mask].reshape(N, -1)
+        
+        labels = torch.from_numpy(np.array([0]*N)).reshape(-1).to(positive_samples.device).long()
+        
+        logits = torch.cat((positive_samples, negative_samples), dim=1)
+        loss = self.criterion(logits, labels)
+        loss /= N
+        
+        return loss
+
 class ContrastiveLoss(nn.Module):
     def __init__(self, num_queries=100):
         super(ContrastiveLoss, self).__init__()
@@ -78,6 +121,8 @@ class ContrastiveLoss(nn.Module):
         self.num_queries = num_queries
         self.labels = torch.eye(num_queries)    #
         self.cos_sim = nn.CosineSimilarity()
+        self.mi_score = RMILoss(with_logits=False)
+        self.contr_sim = SimCLR_Loss(num_queries, 0.5)
 
     def random_idx(self):
         idx_list = []
@@ -94,13 +139,21 @@ class ContrastiveLoss(nn.Module):
         labels = self.labels.unsqueeze(0).repeat(B, 1, 1)   # [B, Q, Q]
         labels = labels.to(query1.device)
 
-        query_sim = query1 @ query2.permute(0, 2, 1)    #[B, Q1, Q2]
-        loss1 = self.mse(query_sim, labels)
-        loss1 /= self.num_queries**2
-        
-        rand_idx = self.random_idx()
-        select_query = init_query[:, rand_idx, :]       # [B, 2, e]
-        loss2 = torch.stack([self.cos_sim(select_query[b, 0:1], select_query[b, 1:2]) for b in range(B)]).mean()
+        # Matching
+        # query_sim = query1 @ query2.permute(0, 2, 1)    #[B, Q1, Q2]
+        # loss1 = self.mse(query_sim, labels)
+        # loss1 /= self.num_queries**2
+        loss1 = torch.stack([self.contr_sim(query1[b], query2[b]) for b in range(B)]).mean()
+
+        # Entropy
+        # probabilities = F.softmax(init_query, dim=-1)
+        # entropy = -torch.sum(probabilities* torch.log(probabilities + 1e-10), dim=-1)
+        # loss2 = entropy.mean()
+        sel_idx = self.random_idx()
+        probabilities = F.softmax(init_query, dim=-1)
+        sel_query = probabilities[:, sel_idx] # [B, 2, 256]
+        sel_query = sel_query.unsqueeze(0)
+        loss2 = self.mi_score(sel_query[:, :, 0:1], sel_query[:, :, 1:2])
         return loss1 + loss2
 
 def image_loss(model_out, gt, mask=None):
