@@ -122,27 +122,6 @@ if __name__ == "__main__" :
             
             context_images = torch.stack([norm(context) for context in context_images]) # [2, H, W, 3]
 
-            feat1, feat2 = backbone(_context_images[0:1]), backbone(_context_images[1:2]) 
-            feat1, feat2 = feat1[0], feat2[0]
-            for k in range(feat1.shape[1]):
-                f1, f2 = feat1[:, k:k+1], feat2[:, k:k+1] # [1, 1, h, w]
-                _f = torch.cat([f1, f2], dim=0)             # [2, 1, h, w]
-                mask = _f.permute(0, 2, 3, 1).cpu().numpy() # [2, h, w, 1]
-                mask1, mask2 = mask[0], mask[1]                     
-                mask1 = mask1 / mask1.max()
-                mask2 = mask2 / mask2.max()
-
-                mask1 = np.uint8(255 * mask1)
-                mask2 = np.uint8(255 * mask2)
-
-                mask1 = cv2.applyColorMap(mask1, cv2.COLORMAP_JET)  # [H, W, 3]
-                mask2 = cv2.applyColorMap(mask2, cv2.COLORMAP_JET)  # [H, W, 3] 
-                cam = np.stack([mask1, mask2], axis=0)               # [2, H, W, 3]
-
-                cam = cam.transpose(0, -1, 1, 2)
-                writer.add_image(f"Feature Maps{k}", 
-                                torchvision.utils.make_grid(torch.tensor(cam), scale_each=False), total_iter)
-
 
             high_feat = z[1]
             tsne = TSNE(n_components=2, random_state=1)
@@ -152,9 +131,33 @@ if __name__ == "__main__" :
             color = np.arange(query2.shape[1])
             plt.scatter(query1_tsne[:, 0], query1_tsne[:, 1], c=color)
             plt.scatter(query2_tsne[:, 0], query2_tsne[:, 1], c=color)
-            plt.gca().axes.xaxis.set_visible(False)
-            plt.gca().axes.yaxis.set_visible(False)
-            writer.add_figure(f'query_embedding', plt.gcf(), total_iter)
+            writer.add_figure(f'query_embedding{k}', plt.gcf(), total_iter)
             plt.close()
+            for k in range(high_feat.shape[1]) :
+                featmaps = high_feat[:, k:k+1]                      # [2, 1, H, W]
+                mask = featmaps.permute(0, 2, 3, 1).cpu().numpy()   # [2, H, W, 1]
+                mask1, mask2 = mask[0], mask[1]                     
+                mask1 = mask1 / mask1.max()
+                mask2 = mask2 / mask2.max()
+
+                # mask1 = np.where(mask1 >= 0.5, np.float32(1.0), np.float32(0.0))
+                # mask2 = np.where(mask2 >= 0.5, np.float32(1.0), np.float32(0.0))
+
+                cam1 = mask1 + np.float32(context_images[0].cpu().numpy())
+                cam2 = mask2 + np.float32(context_images[1].cpu().numpy())
+                cam1 = cam1 / np.max(cam1)
+                cam2 = cam2 / np.max(cam2)
+
+                cam1 = np.uint8(255 * cam1)
+                cam2 = np.uint8(255 * cam2)
+
+                cam1 = cv2.applyColorMap(cam1, cv2.COLORMAP_JET)  # [H, W, 3]
+                cam2 = cv2.applyColorMap(cam2, cv2.COLORMAP_JET)  # [H, W, 3] 
+                cam = np.stack([cam1, cam2], axis=0)               # [2, H, W, 3]
+
+                cam = cam.transpose(0, -1, 1, 2)
+                writer.add_image(f"Attention Maps{k}", 
+                                torchvision.utils.make_grid(torch.tensor(cam), scale_each=False), total_iter)
+        
             
             break
