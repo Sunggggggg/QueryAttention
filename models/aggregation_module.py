@@ -275,12 +275,13 @@ class FeatureExtractionHyperPixel(nn.Module):
         return feats[:3][::-1]
 
 class MultiviewEncoder(nn.Module):
-    def __init__(self, name='resnet50', num_feat_levels=3, num_queries=32, hidden_dim=256, dim_feedforward=2048, nheads=1, num_depth=8) :
+    def __init__(self, name='resnet50', num_feat_levels=3, num_queries=32, hidden_dim=256, dim_feedforward=2048, nheads=1, num_depth=8, contra_loss=False) :
         super(MultiviewEncoder, self).__init__()
         self.num_feat_levels = num_feat_levels
         self.num_queries = num_queries
         self.hidden_dim = hidden_dim
         self.num_depth = num_depth
+        self.contra_loss = contra_loss
 
         # Backbone
         self.backbone = Backbone(name=name, pretrained=True, freeze=True, num_feat_levels=num_feat_levels, hidden_dim=hidden_dim)
@@ -314,7 +315,8 @@ class MultiviewEncoder(nn.Module):
                 )
             self.ffn_layers.append(FFNLayer(d_model=hidden_dim, dim_feedforward=dim_feedforward, dropout=0.0))
 
-        self.loss_func = ContrastiveLoss(self.num_queries)
+        if contra_loss :
+            self.loss_func = ContrastiveLoss(self.num_queries)
 
         self.refinenet1 = FeatureFusionBlock_custom(num_queries, nn.ReLU(False), deconv=False, bn=False, expand=False, align_corners=True)
         self.refinenet2 = FeatureFusionBlock_custom(num_queries, nn.ReLU(False), deconv=False, bn=False, expand=False, align_corners=True)
@@ -423,7 +425,8 @@ class MultiviewEncoder(nn.Module):
                 query2 = query2 + cost_volume.permute(0, 2, 1) @ _query1 # [B, Q2, Q1] [B, Q1, e]
                 query1, query2 = self.norm7(query1), self.norm8(query2)
 
-            contra_losses.append(self.loss_func(query1, query2, init_query))
+            if contra_loss:
+                contra_losses.append(self.loss_func(query1, query2, init_query))
 
         contra_losses = torch.tensor(contra_losses) # [3]
         # Make pixel align

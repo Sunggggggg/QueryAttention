@@ -61,7 +61,8 @@ def multigpu_train(gpu, opt):
                                           no_high_freq=opt.no_high_freq, 
                                           model=opt.model, 
                                           n_view=opt.views, 
-                                          num_queries=opt.num_queries
+                                          num_queries=opt.num_queries,
+                                          contra_loss = opt.contra
                                           )
     optimizer = torch.optim.Adam(lr=opt.lr, params=model.parameters(), betas=(0.99, 0.999))
 
