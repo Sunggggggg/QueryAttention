@@ -425,7 +425,7 @@ class MultiviewEncoder(nn.Module):
                 query2 = query2 + cost_volume.permute(0, 2, 1) @ _query1 # [B, Q2, Q1] [B, Q1, e]
                 query1, query2 = self.norm7(query1), self.norm8(query2)
 
-            if contra_loss:
+            if self.contra_loss:
                 contra_losses.append(self.loss_func(query1, query2, init_query))
 
         contra_losses = torch.tensor(contra_losses) # [3]
